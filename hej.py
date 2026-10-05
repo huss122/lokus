@@ -1,10 +1,7 @@
 
-def school(studentID, gpa):
-    info = f"Student {studentID} has a gpa of {gpa}"
-    return info
+def hälsa(namn, ålder):
+    meddelande = f"Hej {namn}, du är {ålder} år."
+    return meddelande
 
-def name(StudentID):
-    list names = f"Bing"
-
-for i in range(6):
-    print(school(i, i+2))
+for i in range(3):
+    print(hälsa("Test", 20 + i))

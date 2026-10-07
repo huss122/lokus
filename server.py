@@ -1,19 +1,27 @@
+import json
 from pathlib import Path
 
 import httpx
 from fastapi import FastAPI
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 
 OLLAMA_URL = "http://localhost:11434/api/chat"
-MODEL = "llama3.2:3b"
+DEFAULT_MODEL = "qwen3.5:9b"
 BASE_DIR = Path(__file__).parent
 
 app = FastAPI()
 
 
-class Question(BaseModel):
-    text: str
+class Message(BaseModel):
+    role: str
+    content: str
+
+
+class ChatRequest(BaseModel):
+    messages: list[Message]
+    model: str = DEFAULT_MODEL
+    think: bool = False
 
 
 @app.get("/")
@@ -21,23 +29,23 @@ def index():
     return FileResponse(BASE_DIR / "static" / "index.html")
 
 
-@app.get("/hello/{name}")
-def hello(name: str):
-    return {"greeting": f"Hello {name}!"}
-
-
 @app.post("/chat")
-def chat(question: Question):
-    response = httpx.post(
-        OLLAMA_URL,
-        json={
-            "model": MODEL,
-            "messages": [{"role": "user", "content": question.text}],
-            "stream": False,
-        },
-        timeout=120,
-    )
-    data = response.json()
-    if "message" not in data:
-        return {"error": data}
-    return {"answer": data["message"]["content"]}
+def chat(request: ChatRequest):
+    messages = [{"role": m.role, "content": m.content} for m in request.messages]
+    payload = {
+        "model": request.model,
+        "messages": messages,
+        "stream": True,
+        "think": request.think,
+    }
+
+    def stream():
+        try:
+            with httpx.stream("POST", OLLAMA_URL, json=payload, timeout=300) as response:
+                for line in response.iter_lines():
+                    if line:
+                        yield line + "\n"
+        except httpx.HTTPError as error:
+            yield json.dumps({"error": f"Could not reach Ollama: {error}"}) + "\n"
+
+    return StreamingResponse(stream(), media_type="application/x-ndjson")

@@ -2,27 +2,358 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Husse AI</title>
+  <title>SolidAI</title>
   <style>
-    body { font-family: sans-serif; max-width: 700px; margin: 2rem auto; }
-    #messages { border: 1px solid #cd2424; height: 400px; overflow-y: auto; padding: 1rem; }
-    .user { color: blue; margin: 0.5rem 0; }
+    :root {
+      --bg: #ffffff;
+      --bg-sidebar: #fafafa;
+      --text: #1a1a1a;
+      --text-muted: #666;
+      --border: #ccc;
+      --border-accent: #cd2424;
+      --hover: #eee;
+      --active: #ddd;
+      --input-bg: #ffffff;
+      --input-border: #888;
+      --code-bg: #eee;
+      --link: #0066cc;
+    }
+    /* Mörkt läge via systeminställning, OM användaren inte gjort ett eget
+       val med knappen (data-theme="light" blockerar det då explicit). */
+    @media (prefers-color-scheme: dark) {
+      :root:not([data-theme="light"]) {
+        --bg: #1e1e1e;
+        --bg-sidebar: #171717;
+        --text: #e8e8e8;
+        --text-muted: #999;
+        --border: #3a3a3a;
+        --border-accent: #a33;
+        --hover: #2a2a2a;
+        --active: #333;
+        --input-bg: #2a2a2a;
+        --input-border: #555;
+        --code-bg: #2a2a2a;
+        --link: #6cb6ff;
+      }
+    }
+    /* Mörkt läge via knappen, oavsett systeminställning. */
+    :root[data-theme="dark"] {
+      --bg: #1e1e1e;
+      --bg-sidebar: #171717;
+      --text: #e8e8e8;
+      --text-muted: #999;
+      --border: #3a3a3a;
+      --border-accent: #a33;
+      --hover: #2a2a2a;
+      --active: #333;
+      --input-bg: #2a2a2a;
+      --input-border: #555;
+      --code-bg: #2a2a2a;
+      --link: #6cb6ff;
+    }
+
+    #theme-toggle {
+      position: fixed;
+      top: 1rem;
+      right: 1rem;
+      width: 2.5rem;
+      height: 2.5rem;
+      border-radius: 50%;
+      border: 1px solid var(--input-border);
+      background: var(--input-bg);
+      color: var(--text);
+      font-size: 1.2rem;
+      line-height: 1;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 100;
+    }
+    #theme-toggle:hover { background: var(--hover); }
+
+    body {
+      font-family: sans-serif;
+      margin: 0;
+      display: flex;
+      height: 100vh;
+      background: var(--bg);
+      color: var(--text);
+    }
+
+    /* --- Sidopanel --- */
+    #sidebar {
+      width: 240px;
+      border-right: 1px solid var(--border);
+      padding: 1rem;
+      overflow-y: auto;
+      box-sizing: border-box;
+      flex-shrink: 0;
+      background: var(--bg-sidebar);
+    }
+    #new-conversation {
+      width: 100%;
+      padding: 0.6rem;
+      margin-bottom: 1rem;
+      cursor: pointer;
+    }
+    .conv-item {
+      padding: 0.5rem;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 0.9rem;
+      margin-bottom: 0.25rem;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .conv-item:hover { background: var(--hover); }
+    .conv-item.active { background: var(--active); font-weight: bold; }
+
+    /* --- Huvudyta --- */
+    #main {
+      flex: 1;
+      max-width: 700px;
+      margin: 2rem auto;
+      padding: 0 1rem;
+      box-sizing: border-box;
+    }
+
+    .controls { display: flex; gap: 1rem; align-items: center; margin-bottom: 1rem; }
+    #model {
+      font-family: inherit;
+      font-size: 1rem;
+      padding: 0.6rem 0.8rem;
+      min-width: 300px;
+      border: 1px solid var(--input-border);
+      border-radius: 6px;
+      background: var(--input-bg);
+      color: var(--text);
+      cursor: pointer;
+    }
+    #model option { font-size: 1rem; padding: 0.5rem; background: var(--input-bg); color: var(--text); }
+    .controls label { font-size: 1rem; cursor: pointer; }
+
+    #messages {
+      border: 1px solid var(--border-accent);
+      height: 400px;
+      overflow-y: auto;
+      padding: 1rem;
+      background: var(--bg);
+    }
+    .user { color: var(--link); margin: 0.5rem 0; }
     .ai { margin: 0.5rem 0; white-space: pre-wrap; }
-    #input { width: 80%; padding: 0.5rem; }
-    button { padding: 0.5rem 1rem; }
+    .thinking-block {
+      margin: 0.5rem 0;
+      font-size: 0.85rem;
+      color: var(--text-muted);
+    }
+    .thinking-block summary { cursor: pointer; }
+    .thinking-text { white-space: pre-wrap; margin-top: 0.3rem; }
+
+    /* --- Renderad markdown i AI-svar --- */
+    .answer-content p { margin: 0.5rem 0; }
+    .answer-content p:first-child { margin-top: 0; }
+    .answer-content p:last-child { margin-bottom: 0; }
+    .answer-content h1, .answer-content h2, .answer-content h3 {
+      margin: 0.8rem 0 0.4rem;
+      line-height: 1.3;
+    }
+    .answer-content h1 { font-size: 1.3rem; }
+    .answer-content h2 { font-size: 1.15rem; }
+    .answer-content h3 { font-size: 1.05rem; }
+    .answer-content ul, .answer-content ol { margin: 0.4rem 0; padding-left: 1.5rem; }
+    .answer-content li { margin: 0.2rem 0; }
+    .answer-content code {
+      background: var(--code-bg);
+      padding: 0.1em 0.3em;
+      border-radius: 3px;
+      font-family: "SFMono-Regular", Consolas, monospace;
+      font-size: 0.9em;
+    }
+    .answer-content pre {
+      background: var(--code-bg);
+      padding: 0.7rem;
+      border-radius: 6px;
+      overflow-x: auto;
+      margin: 0.5rem 0;
+    }
+    .answer-content pre code { background: none; padding: 0; }
+    #input {
+      width: 80%;
+      padding: 0.5rem;
+      background: var(--input-bg);
+      color: var(--text);
+      border: 1px solid var(--input-border);
+      border-radius: 4px;
+    }
+    button {
+      padding: 0.5rem 1rem;
+      background: var(--input-bg);
+      color: var(--text);
+      border: 1px solid var(--input-border);
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    button:hover { background: var(--hover); }
   </style>
 </head>
 <body>
-  <h1>Husse AI</h1>
-  <div id="messages"></div>
-  <input id="input" placeholder="Type a message...">
-  <button id="send">Send</button>
+
+  <button id="theme-toggle" title="Växla mörkt/ljust läge"></button>
+
+  <div id="sidebar">
+    <button id="new-conversation">+ Ny konversation</button>
+    <div id="conversation-list"></div>
+  </div>
+
+  <div id="main">
+    <h1>SolidAI</h1>
+    <div class="controls">
+      <select id="model"></select>
+      <label><input type="checkbox" id="think"> Thinking</label>
+    </div>
+    <div id="messages"></div>
+    <input id="input" placeholder="Type a message...">
+    <button id="send">Send</button>
+  </div>
 
   <script>
+    // --- Mörkt/ljust läge -------------------------------------------
+    // localStorage: "dark"/"light" = användarens eget val (vinner alltid).
+    // Inget sparat värde = följ systeminställningen (prefers-color-scheme).
+    const themeToggle = document.getElementById("theme-toggle");
+
+    function effectiveTheme() {
+      let saved = null;
+      try { saved = localStorage.getItem("theme"); } catch (e) { /* t.ex. privat läge */ }
+      if (saved === "dark" || saved === "light") return saved;
+      return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+    }
+
+    function applyThemeIcon() {
+      // Ikonen visar vad knappen BYTER TILL, inte vad som är aktivt just nu.
+      themeToggle.textContent = effectiveTheme() === "dark" ? "☀️" : "🌙";
+    }
+
+    function toggleTheme() {
+      const next = effectiveTheme() === "dark" ? "light" : "dark";
+      try { localStorage.setItem("theme", next); } catch (e) { /* t.ex. privat läge */ }
+      document.documentElement.dataset.theme = next;
+      applyThemeIcon();
+    }
+
+    (function initTheme() {
+      let saved = null;
+      try { saved = localStorage.getItem("theme"); } catch (e) { /* t.ex. privat läge */ }
+      if (saved === "dark" || saved === "light") {
+        document.documentElement.dataset.theme = saved;
+      }
+      applyThemeIcon();
+    })();
+    themeToggle.addEventListener("click", toggleTheme);
+
     const messagesDiv = document.getElementById("messages");
     const input = document.getElementById("input");
     const sendButton = document.getElementById("send");
+    const conversationListDiv = document.getElementById("conversation-list");
+    const newConversationButton = document.getElementById("new-conversation");
+
     let history = [];
+    let currentConversationId = null; // null = ingen konversation sparad ännu
+
+    const modelSelect = document.getElementById("model");
+    const thinkBox = document.getElementById("think");
+    let modelInfo = [];
+
+    function updateThinkBox() {
+      const current = modelInfo.find((m) => m.name === modelSelect.value);
+      const supported = current ? current.thinking : false;
+      thinkBox.disabled = !supported;
+      if (!supported) thinkBox.checked = false;
+    }
+
+    async function loadModels() {
+      try {
+        const response = await fetch("/models");
+        const data = await response.json();
+        if (data.error) {
+          addMessage("ai", "Error: " + data.error);
+          return;
+        }
+        modelInfo = data.models;
+        for (const m of modelInfo) {
+          modelSelect.add(new Option(m.name, m.name));
+        }
+        updateThinkBox();
+      } catch (error) {
+        addMessage("ai", "Error: " + error);
+      }
+    }
+
+    modelSelect.addEventListener("change", updateThinkBox);
+    loadModels();
+
+    // --- Minimal markdown-rendering, utan externa bibliotek -------------
+    // Täcker det som modellerna faktiskt använder i praktiken: rubriker,
+    // fetstil/kursiv, inline-kod, kodblock och punkt-/numrerade listor.
+    // Inte hela markdown-standarden (t.ex. tabeller eller länkar saknas),
+    // men det täcker 95% av vad som faktiskt dyker upp i AI-svar.
+
+    function escapeHtml(s) {
+      return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    }
+
+    function renderMarkdown(raw) {
+      // Kodblock plockas ut FÖRST och ersätts med platshållare, så att
+      // resten av reglerna (fetstil, listor m.m.) inte råkar tolka
+      // tecken som finns inuti kod.
+      const codeBlocks = [];
+      let text = raw.replace(/```(\w*)\n?([\s\S]*?)```/g, (_match, _lang, code) => {
+        const idx = codeBlocks.length;
+        codeBlocks.push(`<pre><code>${escapeHtml(code.replace(/\n$/, ""))}</code></pre>`);
+        return `\u0000CODEBLOCK${idx}\u0000`;
+      });
+
+      text = escapeHtml(text);
+
+      text = text.replace(/`([^`]+)`/g, (_m, c) => `<code>${c}</code>`);
+
+      text = text.replace(/^### (.*)$/gm, "<h3>$1</h3>");
+      text = text.replace(/^## (.*)$/gm, "<h2>$1</h2>");
+      text = text.replace(/^# (.*)$/gm, "<h1>$1</h1>");
+
+      text = text.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+      text = text.replace(/__([^_]+)__/g, "<strong>$1</strong>");
+      text = text.replace(/\*([^*]+)\*/g, "<em>$1</em>");
+
+      // Grupperar flera på varandra följande listrader till en <ul>/<ol>.
+      text = text.replace(/(^|\n)((?:[-*] .*(?:\n|$))+)/g, (_m, pre, block) => {
+        const items = block.trim().split("\n")
+          .map((l) => l.replace(/^[-*] /, ""))
+          .map((i) => `<li>${i}</li>`).join("");
+        return `${pre}<ul>${items}</ul>`;
+      });
+      text = text.replace(/(^|\n)((?:\d+\. .*(?:\n|$))+)/g, (_m, pre, block) => {
+        const items = block.trim().split("\n")
+          .map((l) => l.replace(/^\d+\. /, ""))
+          .map((i) => `<li>${i}</li>`).join("");
+        return `${pre}<ol>${items}</ol>`;
+      });
+
+      // Stycken: dela på tomrader. Block som redan är HTML (rubrik, lista,
+      // kodplatshållare) lämnas orörda, allt annat slås in i <p>.
+      const blockTag = /^<(h1|h2|h3|ul|ol)/;
+      text = text.split(/\n{2,}/).map((block) => {
+        block = block.trim();
+        if (!block) return "";
+        if (blockTag.test(block) || block.includes("\u0000CODEBLOCK")) return block;
+        return `<p>${block.replace(/\n/g, "<br>")}</p>`;
+      }).join("\n");
+
+      text = text.replace(/\u0000CODEBLOCK(\d+)\u0000/g, (_m, idx) => codeBlocks[idx]);
+      return text;
+    }
 
     function addMessage(cssClass, text) {
       const div = document.createElement("div");
@@ -33,71 +364,188 @@
       return div;
     }
 
+    // --- Sidopanel: lista konversationer ---------------------------
+
+    async function loadConversations() {
+      try {
+        const response = await fetch("/conversations");
+        const data = await response.json();
+        conversationListDiv.innerHTML = "";
+        for (const conv of data.conversations) {
+          const item = document.createElement("div");
+          item.className = "conv-item" + (conv.id === currentConversationId ? " active" : "");
+          item.textContent = conv.title;
+          item.addEventListener("click", () => openConversation(conv.id));
+          conversationListDiv.appendChild(item);
+        }
+      } catch (error) {
+        console.error("Could not load conversations:", error);
+      }
+    }
+
+    async function openConversation(id) {
+      currentConversationId = id;
+      messagesDiv.innerHTML = "";
+      history = [];
+
+      const response = await fetch(`/conversations/${id}/messages`);
+      const data = await response.json();
+      for (const msg of data.messages) {
+        const isUser = msg.role === "user";
+        const div = addMessage(isUser ? "user" : "ai", isUser ? "You: " + msg.content : "AI: ");
+        if (!isUser) {
+          const content = document.createElement("span");
+          content.className = "answer-content";
+          content.innerHTML = renderMarkdown(msg.content);
+          div.appendChild(content);
+        }
+        history.push({ role: msg.role, content: msg.content });
+      }
+      loadConversations(); // för att uppdatera vilken som är "active"
+    }
+
+    newConversationButton.addEventListener("click", () => {
+      currentConversationId = null;
+      history = [];
+      messagesDiv.innerHTML = "";
+      loadConversations();
+    });
+
+    // --- Skicka meddelande ------------------------------------------
+
     async function sendMessage() {
-    const text = input.value.trim();
-    if (text === "") return;
-    input.value = "";
-    addMessage("user", "You: " + text);
-    history.push({ role: "user", content: text });
+      const text = input.value.trim();
+      if (text === "") return;
+      input.value = "";
+      addMessage("user", "You: " + text);
+      history.push({ role: "user", content: text });
 
-    const aiDiv = addMessage("ai", "AI: ...");
-    let answer = "";
-    let failed = false;
+      // Ett wrapper-element som innehåller en ihopfällbar thinking-sektion
+      // (visas bara om modellen faktiskt skickar tänkande-text) och själva
+      // svarstexten. De hålls separata hela vägen, så de blandas aldrig ihop.
+      const wrapper = document.createElement("div");
+      wrapper.className = "ai";
 
-    function handleLine(line) {
-      if (line.trim() === "") return;
-      const data = JSON.parse(line);
-      if (data.error || data.detail) {
-        failed = true;
-        aiDiv.textContent = "Error: " + JSON.stringify(data.error || data.detail);
-        return;
+      const thinkingBlock = document.createElement("details");
+      thinkingBlock.className = "thinking-block";
+      thinkingBlock.style.display = "none"; // visas bara om det faktiskt kommer tänkande-text
+      const thinkingSummary = document.createElement("summary");
+      thinkingSummary.textContent = "Visa resonemang";
+      const thinkingText = document.createElement("div");
+      thinkingText.className = "thinking-text";
+      thinkingBlock.appendChild(thinkingSummary);
+      thinkingBlock.appendChild(thinkingText);
+
+      // Etikett + ett separat innehållselement. Under strömningen skriver vi
+      // rå text dit (snabbt, inget parsande per token), och byter till
+      // renderad markdown först när svaret är klart - annars skulle t.ex.
+      // en halvskriven "**" flimra till som bokstavliga stjärnor och sedan
+      // hoppa om till fetstil mitt i strömmen.
+      const answerDiv = document.createElement("div");
+      const answerLabel = document.createElement("span");
+      answerLabel.textContent = "AI: ";
+      const answerContent = document.createElement("span");
+      answerContent.className = "answer-content";
+      answerContent.textContent = "...";
+      const answerDuration = document.createElement("span");
+      answerDiv.appendChild(answerLabel);
+      answerDiv.appendChild(answerContent);
+      answerDiv.appendChild(answerDuration);
+
+      wrapper.appendChild(thinkingBlock);
+      wrapper.appendChild(answerDiv);
+      messagesDiv.appendChild(wrapper);
+
+      let answer = "";
+      let thinking = "";
+      let failed = false;
+
+      function handleLine(line) {
+        if (line.trim() === "") return;
+        const data = JSON.parse(line);
+
+        // Första raden i en ny konversation innehåller conversation_id
+        if (data.conversation_id !== undefined) {
+          const isNewConversation = currentConversationId === null;
+          currentConversationId = data.conversation_id;
+          if (isNewConversation) loadConversations(); // visa den nya posten i panelen
+          return;
+        }
+
+        if (data.status === "thinking") {
+          // Servern samlar numera ihop hela svaret innan den delar upp
+          // tanke/svar (se server.py), så inget annat syns förrän allt är
+          // klart - den här signalen är bara till för att visa "tänker..."
+          // under tiden istället för ett tomt "...".
+          answerContent.textContent = "thinking...";
+          return;
+        }
+
+        if (data.error || data.detail) {
+          failed = true;
+          answerLabel.textContent = "Error: ";
+          answerContent.textContent = JSON.stringify(data.error || data.detail);
+          return;
+        }
+        if (data.message && data.message.thinking) {
+          thinking += data.message.thinking;
+          thinkingBlock.style.display = "block";
+          thinkingText.textContent = thinking;
+          if (answer === "") answerContent.textContent = "thinking...";
+        }
+        if (data.message && data.message.content) {
+          answer += data.message.content;
+          answerContent.textContent = answer; // rå text under strömningen
+          messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+        if (data.done && data.total_duration) {
+          const seconds = data.total_duration / 1e9;
+          answerContent.innerHTML = renderMarkdown(answer); // nu är svaret klart - rendera
+          answerDuration.textContent = " (" + seconds.toFixed(1) + " s)";
+        }
       }
-      if (data.message && data.message.content) {
-        answer += data.message.content;
-        aiDiv.textContent = "AI: " + answer;
-        messagesDiv.scrollTop = messagesDiv.scrollHeight;
-      }
-      if (data.done && data.total_duration) {
-        const seconds = data.total_duration / 1e9;
-        aiDiv.textContent = "AI: " + answer + " (" + seconds.toFixed(1) + " s)";
-      }
-    }
 
-    try {
-      const response = await fetch("/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: history }),
-      });
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = "";
+      const body = { messages: history, conversation_id: currentConversationId };
+      if (modelSelect.value) body.model = modelSelect.value;
+      if (!thinkBox.disabled) body.think = thinkBox.checked;
 
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split("\n");
-        buffer = lines.pop();
-        for (const line of lines) handleLine(line);
-      }
-      handleLine(buffer);
+      try {
+        const response = await fetch("/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
 
-      if (failed || answer === "") {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split("\n");
+          buffer = lines.pop();
+          for (const line of lines) handleLine(line);
+        }
+        handleLine(buffer);
+
+        if (failed || answer === "") {
+          history.pop();
+        } else {
+          history.push({ role: "assistant", content: answer });
+        }
+      } catch (error) {
+        answerDiv.textContent = "Error: " + error;
         history.pop();
-      } else {
-        history.push({ role: "assistant", content: answer });
       }
-    } catch (error) {
-      aiDiv.textContent = "Error: " + error;
-      history.pop();
     }
-  }
 
     sendButton.addEventListener("click", sendMessage);
     input.addEventListener("keydown", (e) => {
       if (e.key === "Enter") sendMessage();
     });
+
+    loadConversations();
   </script>
 </body>
 </html>

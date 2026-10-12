@@ -2,154 +2,315 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>SolidAI</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Lokus</title>
   <style>
     :root {
-      --bg: #ffffff;
-      --bg-sidebar: #fafafa;
-      --text: #1a1a1a;
-      --text-muted: #666;
-      --border: #ccc;
-      --border-accent: #cd2424;
-      --hover: #eee;
-      --active: #ddd;
-      --input-bg: #ffffff;
-      --input-border: #888;
-      --code-bg: #eee;
-      --link: #0066cc;
+      --bg: #fafaf9;
+      --bg-sidebar: #f1f1ef;
+      --surface: #ffffff;
+      --surface-hover: #ececeb;
+      --text: #1b1d21;
+      --text-muted: #71757c;
+      --border: #e4e4e1;
+      --accent: #0e8a9c;
+      --accent-text: #ffffff;
+      --danger: #c23b2e;
+      --code-bg: #eeeeec;
     }
-    /* Mörkt läge via systeminställning, OM användaren inte gjort ett eget
-       val med knappen (data-theme="light" blockerar det då explicit). */
+    /* Mörkt läge via systeminställning, om inget eget val gjorts. */
     @media (prefers-color-scheme: dark) {
       :root:not([data-theme="light"]) {
-        --bg: #1e1e1e;
-        --bg-sidebar: #171717;
-        --text: #e8e8e8;
-        --text-muted: #999;
-        --border: #3a3a3a;
-        --border-accent: #a33;
-        --hover: #2a2a2a;
-        --active: #333;
-        --input-bg: #2a2a2a;
-        --input-border: #555;
-        --code-bg: #2a2a2a;
-        --link: #6cb6ff;
+        --bg: #15171c;
+        --bg-sidebar: #101216;
+        --surface: #1d2026;
+        --surface-hover: #262930;
+        --text: #ecedef;
+        --text-muted: #888d96;
+        --border: #262930;
+        --accent: #4fc1d6;
+        --accent-text: #0b1013;
+        --danger: #e2574c;
+        --code-bg: #20232a;
       }
     }
     /* Mörkt läge via knappen, oavsett systeminställning. */
     :root[data-theme="dark"] {
-      --bg: #1e1e1e;
-      --bg-sidebar: #171717;
-      --text: #e8e8e8;
-      --text-muted: #999;
-      --border: #3a3a3a;
-      --border-accent: #a33;
-      --hover: #2a2a2a;
-      --active: #333;
-      --input-bg: #2a2a2a;
-      --input-border: #555;
-      --code-bg: #2a2a2a;
-      --link: #6cb6ff;
+      --bg: #15171c;
+      --bg-sidebar: #101216;
+      --surface: #1d2026;
+      --surface-hover: #262930;
+      --text: #ecedef;
+      --text-muted: #888d96;
+      --border: #262930;
+      --accent: #4fc1d6;
+      --accent-text: #0b1013;
+      --danger: #e2574c;
+      --code-bg: #20232a;
     }
 
-    #theme-toggle {
-      position: fixed;
-      top: 1rem;
-      right: 1rem;
-      width: 2.5rem;
-      height: 2.5rem;
-      border-radius: 50%;
-      border: 1px solid var(--input-border);
-      background: var(--input-bg);
-      color: var(--text);
-      font-size: 1.2rem;
-      line-height: 1;
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      z-index: 100;
+    * { box-sizing: border-box; }
+    [hidden] { display: none !important; }
+
+    html, body {
+      height: 100%;
     }
-    #theme-toggle:hover { background: var(--hover); }
 
     body {
-      font-family: sans-serif;
+      font-family: ui-sans-serif, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
       margin: 0;
       display: flex;
-      height: 100vh;
       background: var(--bg);
       color: var(--text);
+      font-size: 15px;
     }
+
+    button {
+      font-family: inherit;
+      cursor: pointer;
+    }
+    textarea, select {
+      font-family: inherit;
+    }
+    svg { display: block; }
 
     /* --- Sidopanel --- */
     #sidebar {
-      width: 240px;
-      border-right: 1px solid var(--border);
-      padding: 1rem;
-      overflow-y: auto;
-      box-sizing: border-box;
+      width: 264px;
       flex-shrink: 0;
       background: var(--bg-sidebar);
+      display: flex;
+      flex-direction: column;
+      padding: 0.75rem;
+      overflow: hidden;
     }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.5rem 0.4rem 1rem;
+      font-weight: 600;
+      font-size: 0.95rem;
+      letter-spacing: 0.01em;
+    }
+    .brand-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--accent);
+      flex-shrink: 0;
+    }
+
     #new-conversation {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
       width: 100%;
-      padding: 0.6rem;
-      margin-bottom: 1rem;
-      cursor: pointer;
+      padding: 0.55rem 0.7rem;
+      margin-bottom: 0.75rem;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: var(--surface);
+      color: var(--text);
+      font-size: 0.875rem;
+      font-weight: 500;
     }
+    #new-conversation:hover { background: var(--surface-hover); }
+    #new-conversation svg { width: 16px; height: 16px; color: var(--text-muted); }
+
+    #conversation-list {
+      overflow-y: auto;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 0.1rem;
+    }
+
     .conv-item {
-      padding: 0.5rem;
-      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      padding: 0.5rem 0.6rem;
+      border-radius: 7px;
       cursor: pointer;
-      font-size: 0.9rem;
-      margin-bottom: 0.25rem;
+      font-size: 0.85rem;
+      color: var(--text);
+    }
+    .conv-item:hover { background: var(--surface-hover); }
+    .conv-item.active { background: var(--surface-hover); }
+
+    .conv-title {
+      flex: 1;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
     }
-    .conv-item:hover { background: var(--hover); }
-    .conv-item.active { background: var(--active); font-weight: bold; }
+
+    .conv-delete {
+      flex-shrink: 0;
+      width: 24px;
+      height: 24px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 5px;
+      color: var(--text-muted);
+      opacity: 0;
+      background: transparent;
+      border: none;
+      padding: 0;
+    }
+    .conv-item:hover .conv-delete,
+    .conv-delete:focus-visible { opacity: 1; }
+    .conv-delete:hover { background: var(--border); color: var(--danger); }
+    .conv-delete svg { width: 14px; height: 14px; }
+
+    .conv-confirm {
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      padding: 0.4rem 0.6rem;
+      font-size: 0.8rem;
+      width: 100%;
+    }
+    .conv-confirm span { color: var(--text-muted); flex: 1; }
+    .conv-confirm button {
+      border: none;
+      background: none;
+      font-size: 0.8rem;
+      font-weight: 500;
+      padding: 0.15rem 0.4rem;
+      border-radius: 4px;
+    }
+    .conv-confirm .confirm-yes { color: var(--danger); }
+    .conv-confirm .confirm-yes:hover { background: var(--border); }
+    .conv-confirm .confirm-no { color: var(--text-muted); }
+    .conv-confirm .confirm-no:hover { background: var(--border); }
 
     /* --- Huvudyta --- */
-    #main {
+    #main, #benchmark-view {
       flex: 1;
-      max-width: 700px;
-      margin: 2rem auto;
-      padding: 0 1rem;
-      box-sizing: border-box;
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+      height: 100vh;
     }
 
-    .controls { display: flex; gap: 1rem; align-items: center; margin-bottom: 1rem; }
+    #topbar, #bench-topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+      padding: 0.75rem 1.25rem;
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+    .topbar-controls {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      min-width: 0;
+    }
     #model {
-      font-family: inherit;
-      font-size: 1rem;
-      padding: 0.6rem 0.8rem;
-      min-width: 300px;
-      border: 1px solid var(--input-border);
-      border-radius: 6px;
-      background: var(--input-bg);
+      font-size: 0.85rem;
+      padding: 0.4rem 0.6rem;
+      border: 1px solid var(--border);
+      border-radius: 7px;
+      background: var(--surface);
       color: var(--text);
-      cursor: pointer;
+      max-width: 320px;
     }
-    #model option { font-size: 1rem; padding: 0.5rem; background: var(--input-bg); color: var(--text); }
-    .controls label { font-size: 1rem; cursor: pointer; }
-
-    #messages {
-      border: 1px solid var(--border-accent);
-      height: 400px;
-      overflow-y: auto;
-      padding: 1rem;
-      background: var(--bg);
-    }
-    .user { color: var(--link); margin: 0.5rem 0; }
-    .ai { margin: 0.5rem 0; white-space: pre-wrap; }
-    .thinking-block {
-      margin: 0.5rem 0;
+    .think-toggle {
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
       font-size: 0.85rem;
       color: var(--text-muted);
+      white-space: nowrap;
     }
-    .thinking-block summary { cursor: pointer; }
-    .thinking-text { white-space: pre-wrap; margin-top: 0.3rem; }
+    .think-toggle input { accent-color: var(--accent); }
+
+    .theme-toggle {
+      width: 2.1rem;
+      height: 2.1rem;
+      border-radius: 50%;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--text-muted);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+    .theme-toggle:hover { background: var(--surface-hover); color: var(--text); }
+    .theme-toggle svg { width: 17px; height: 17px; }
+
+    /* --- Meddelanden --- */
+    #messages {
+      flex: 1;
+      overflow-y: auto;
+      padding: 1.5rem 1.25rem 1rem;
+    }
+    #messages-inner {
+      max-width: 720px;
+      margin: 0 auto;
+    }
+
+    .msg-row { margin-bottom: 1.4rem; }
+    .msg-row.user { display: flex; justify-content: flex-end; }
+    .msg-row.user .bubble {
+      background: var(--surface);
+      border-radius: 18px;
+      padding: 0.6rem 1rem;
+      max-width: 80%;
+      white-space: pre-wrap;
+      line-height: 1.55;
+    }
+    .msg-row.assistant .answer-content {
+      line-height: 1.65;
+    }
+    .msg-row.assistant .answer-meta {
+      margin-top: 0.4rem;
+      font-size: 0.78rem;
+      color: var(--text-muted);
+    }
+
+    .thinking-block {
+      margin: 0 0 0.6rem;
+      font-size: 0.82rem;
+      color: var(--text-muted);
+    }
+    .thinking-block summary {
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+    }
+    .thinking-block summary::marker { content: ""; }
+    .thinking-block summary::after { content: "▸"; font-size: 0.75em; }
+    .thinking-block[open] summary::after { content: "▾"; }
+    .thinking-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--accent);
+    }
+    @media (prefers-reduced-motion: no-preference) {
+      .thinking-pending .thinking-dot {
+        animation: pulse 1.1s ease-in-out infinite;
+      }
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.25; }
+    }
+    .thinking-text {
+      white-space: pre-wrap;
+      margin: 0.4rem 0 0 0.9rem;
+      padding-left: 0.6rem;
+      border-left: 2px solid var(--border);
+    }
 
     /* --- Renderad markdown i AI-svar --- */
     .answer-content p { margin: 0.5rem 0; }
@@ -159,70 +320,297 @@
       margin: 0.8rem 0 0.4rem;
       line-height: 1.3;
     }
-    .answer-content h1 { font-size: 1.3rem; }
-    .answer-content h2 { font-size: 1.15rem; }
-    .answer-content h3 { font-size: 1.05rem; }
-    .answer-content ul, .answer-content ol { margin: 0.4rem 0; padding-left: 1.5rem; }
-    .answer-content li { margin: 0.2rem 0; }
+    .answer-content h1 { font-size: 1.25rem; }
+    .answer-content h2 { font-size: 1.12rem; }
+    .answer-content h3 { font-size: 1.03rem; }
+    .answer-content ul, .answer-content ol { margin: 0.4rem 0; padding-left: 1.4rem; }
+    .answer-content li { margin: 0.25rem 0; }
     .answer-content code {
       background: var(--code-bg);
-      padding: 0.1em 0.3em;
-      border-radius: 3px;
-      font-family: "SFMono-Regular", Consolas, monospace;
-      font-size: 0.9em;
+      padding: 0.1em 0.35em;
+      border-radius: 4px;
+      font-family: ui-monospace, "SF Mono", "Cascadia Code", Consolas, monospace;
+      font-size: 0.88em;
     }
     .answer-content pre {
       background: var(--code-bg);
-      padding: 0.7rem;
-      border-radius: 6px;
+      padding: 0.8rem 0.9rem;
+      border-radius: 8px;
       overflow-x: auto;
-      margin: 0.5rem 0;
+      margin: 0.6rem 0;
     }
     .answer-content pre code { background: none; padding: 0; }
+
+    /* --- Inmatning --- */
+    #input-area {
+      flex-shrink: 0;
+      padding: 0.9rem 1.25rem 1.1rem;
+    }
+    #input-bar {
+      max-width: 720px;
+      margin: 0 auto;
+      display: flex;
+      align-items: flex-end;
+      gap: 0.5rem;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 0.5rem 0.5rem 0.5rem 1rem;
+    }
     #input {
-      width: 80%;
-      padding: 0.5rem;
-      background: var(--input-bg);
+      flex: 1;
+      border: none;
+      background: none;
       color: var(--text);
-      border: 1px solid var(--input-border);
-      border-radius: 4px;
+      resize: none;
+      min-height: 24px;
+      max-height: 200px;
+      overflow-y: auto;
+      padding: 0.3rem 0;
+      font-size: 0.95rem;
+      line-height: 1.5;
     }
-    button {
-      padding: 0.5rem 1rem;
-      background: var(--input-bg);
+    #input:focus { outline: none; }
+    #input::placeholder { color: var(--text-muted); }
+
+    #send {
+      flex-shrink: 0;
+      width: 2.1rem;
+      height: 2.1rem;
+      border-radius: 50%;
+      border: none;
+      background: var(--accent);
+      color: var(--accent-text);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    #send:hover { opacity: 0.88; }
+    #send:disabled { opacity: 0.4; cursor: default; }
+    #send svg { width: 17px; height: 17px; }
+
+
+    /* --- Navigation tabs (sidebar) --- */
+    .nav-tabs {
+      display: flex;
+      gap: 0.25rem;
+      padding: 0.2rem;
+      margin-bottom: 0.75rem;
+      background: var(--surface-hover);
+      border-radius: 9px;
+    }
+    .nav-tab {
+      flex: 1;
+      padding: 0.4rem 0.5rem;
+      border: none;
+      border-radius: 7px;
+      background: transparent;
+      color: var(--text-muted);
+      font-size: 0.85rem;
+      font-weight: 500;
+    }
+    .nav-tab.active { background: var(--surface); color: var(--text); }
+
+    /* --- Benchmark view --- */
+    #bench-topbar { font-weight: 600; font-size: 0.95rem; }
+    #bench-scroll { flex: 1; overflow-y: auto; padding: 1.5rem 1.25rem 2rem; }
+    #bench-inner { max-width: 960px; margin: 0 auto; }
+    #bench-inner h2 { font-size: 1.05rem; margin: 1.6rem 0 0.7rem; }
+
+    .bench-form {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1rem 1.1rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.9rem;
+    }
+    .bench-label { font-size: 0.82rem; color: var(--text-muted); margin-bottom: 0.3rem; }
+    .bench-form select, .bench-form input[type="number"], #bench-prompt {
+      border: 1px solid var(--border);
+      border-radius: 7px;
+      background: var(--bg);
       color: var(--text);
-      border: 1px solid var(--input-border);
-      border-radius: 4px;
-      cursor: pointer;
+      font-size: 0.88rem;
+      padding: 0.4rem 0.6rem;
     }
-    button:hover { background: var(--hover); }
+    #bench-prompt { width: 100%; min-height: 84px; resize: vertical; margin-top: 0.4rem; line-height: 1.5; }
+    #bench-models { display: flex; flex-wrap: wrap; gap: 0.5rem 1.2rem; }
+    .bench-check { display: flex; align-items: center; gap: 0.4rem; font-size: 0.88rem; }
+    .bench-check input { accent-color: var(--accent); }
+    .bench-check small { color: var(--text-muted); }
+    .bench-options { display: flex; flex-wrap: wrap; align-items: center; gap: 0.6rem 1.4rem; font-size: 0.88rem; }
+    .bench-options input[type="number"] { width: 4.2rem; }
+    #bench-run {
+      align-self: flex-start;
+      padding: 0.5rem 1.1rem;
+      border: none;
+      border-radius: 8px;
+      background: var(--accent);
+      color: var(--accent-text);
+      font-size: 0.88rem;
+      font-weight: 600;
+    }
+    #bench-run:hover { opacity: 0.88; }
+    #bench-run:disabled { opacity: 0.4; cursor: default; }
+    #bench-status { font-size: 0.85rem; color: var(--text-muted); min-height: 1.2em; }
+    #bench-status.error { color: var(--danger); }
+    .bench-note { font-size: 0.78rem; color: var(--text-muted); }
+
+    .bench-batch {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      margin-bottom: 1rem;
+      overflow: hidden;
+    }
+    .bench-batch-head {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 1rem;
+      padding: 0.75rem 1rem;
+      border-bottom: 1px solid var(--border);
+    }
+    .bench-batch-prompt { font-size: 0.88rem; line-height: 1.45; }
+    .bench-batch-meta { font-size: 0.78rem; color: var(--text-muted); margin-top: 0.2rem; }
+    .bench-delete {
+      flex-shrink: 0;
+      border: none;
+      background: none;
+      color: var(--text-muted);
+      font-size: 0.8rem;
+      padding: 0.2rem 0.5rem;
+      border-radius: 5px;
+    }
+    .bench-delete:hover { background: var(--surface-hover); color: var(--danger); }
+    .bench-table-wrap { overflow-x: auto; }
+    .bench-table { width: 100%; border-collapse: collapse; font-size: 0.84rem; }
+    .bench-table th, .bench-table td {
+      text-align: right;
+      padding: 0.5rem 0.9rem;
+      white-space: nowrap;
+      border-bottom: 1px solid var(--border);
+    }
+    .bench-table th:first-child, .bench-table td:first-child { text-align: left; }
+    .bench-table th { font-weight: 500; color: var(--text-muted); font-size: 0.78rem; }
+    .bench-table tr:last-child td { border-bottom: none; }
+    .bench-table td.fast { color: var(--accent); font-weight: 600; }
+    .bench-view-btn {
+      border: 1px solid var(--border);
+      background: var(--bg);
+      color: var(--text-muted);
+      border-radius: 6px;
+      font-size: 0.78rem;
+      padding: 0.15rem 0.5rem;
+    }
+    .bench-view-btn:hover { background: var(--surface-hover); color: var(--text); }
+    .bench-response td { text-align: left !important; white-space: normal !important; background: var(--bg); }
+    .bench-response pre {
+      margin: 0;
+      white-space: pre-wrap;
+      font-family: inherit;
+      font-size: 0.84rem;
+      line-height: 1.55;
+    }
+    .bench-empty { color: var(--text-muted); font-size: 0.88rem; }
+
+    :focus-visible {
+      outline: 2px solid var(--accent);
+      outline-offset: 2px;
+    }
+
+    @media (max-width: 720px) {
+      #sidebar { display: none; }
+    }
   </style>
 </head>
 <body>
 
-  <button id="theme-toggle" title="Växla mörkt/ljust läge"></button>
-
   <div id="sidebar">
-    <button id="new-conversation">+ Ny konversation</button>
+    <div class="brand"><span class="brand-dot"></span>Lokus</div>
+    <div class="nav-tabs">
+      <button class="nav-tab active" data-view="chat">Chat</button>
+      <button class="nav-tab" data-view="benchmark">Benchmark</button>
+    </div>
+    <button id="new-conversation">
+      <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M10 4v12M4 10h12"/></svg>
+      New conversation
+    </button>
     <div id="conversation-list"></div>
   </div>
 
   <div id="main">
-    <h1>SolidAI</h1>
-    <div class="controls">
-      <select id="model"></select>
-      <label><input type="checkbox" id="think"> Thinking</label>
+    <div id="topbar">
+      <div class="topbar-controls">
+        <select id="model"></select>
+        <label class="think-toggle"><input type="checkbox" id="think"> Thinking</label>
+      </div>
+      <button class="theme-toggle" title="Toggle dark/light mode"></button>
     </div>
-    <div id="messages"></div>
-    <input id="input" placeholder="Type a message...">
-    <button id="send">Send</button>
+
+    <div id="messages"><div id="messages-inner"></div></div>
+
+    <div id="input-area">
+      <div id="input-bar">
+        <textarea id="input" placeholder="Type a message…" rows="1"></textarea>
+        <button id="send" title="Send">
+          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 15.5V4.5M10 4.5L4.5 10M10 4.5L15.5 10"/></svg>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <div id="benchmark-view" hidden>
+    <div id="bench-topbar">
+      <span>Benchmark</span>
+      <button class="theme-toggle" title="Toggle dark/light mode"></button>
+    </div>
+    <div id="bench-scroll">
+      <div id="bench-inner">
+        <div class="bench-form">
+          <div>
+            <div class="bench-label">Prompt</div>
+            <select id="bench-preset">
+              <option value="">Choose a preset…</option>
+              <option value="What is Python? Answer in one sentence.">Short factual answer</option>
+              <option value="A train leaves at 14:10 and travels 180 km at 90 km/h. A second train leaves the same station at 14:40 at 120 km/h on the same track. When does the second train catch up? Explain step by step.">Reasoning (math)</option>
+              <option value="Write a Python function that checks whether a string is a valid IPv4 address, and include a few test cases.">Code generation</option>
+              <option value="Explain how a hash table works, including collision handling, to a second-year computer science student.">Long explanation</option>
+            </select>
+            <textarea id="bench-prompt" placeholder="Write the prompt every model will receive…"></textarea>
+          </div>
+          <div>
+            <div class="bench-label">Models to compare</div>
+            <div id="bench-models"></div>
+          </div>
+          <div class="bench-options">
+            <label>Runs per model <input type="number" id="bench-runs" min="1" max="5" value="1"></label>
+            <label class="bench-check"><input type="checkbox" id="bench-think"> Thinking (where supported)</label>
+          </div>
+          <button id="bench-run">Run benchmark</button>
+          <div id="bench-status"></div>
+          <div class="bench-note">Each model is warmed up first (not measured). Avoid using the chat while a benchmark runs, it competes for the same GPU/CPU and skews the numbers.</div>
+        </div>
+
+        <h2>Results</h2>
+        <div id="bench-results"></div>
+      </div>
+    </div>
   </div>
 
   <script>
+    const ICONS = {
+      sun: '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="10" cy="10" r="3.3"/><path d="M10 2.5v2M10 15.5v2M17.5 10h-2M4.5 10h-2M15.3 4.7l-1.4 1.4M6.1 13.9l-1.4 1.4M15.3 15.3l-1.4-1.4M6.1 6.1L4.7 4.7"/></svg>',
+      moon: '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M16.5 12.2A7 7 0 1 1 7.8 3.5a5.7 5.7 0 0 0 8.7 8.7Z"/></svg>',
+      trash: '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 6h11M8.2 6V4.6c0-.4.4-.8.9-.8h1.8c.5 0 .9.4.9.8V6M6.2 6l.5 9.1c0 .5.5.9 1 .9h4.6c.5 0 .9-.4 1-.9L13.8 6"/></svg>',
+    };
+
     // --- Mörkt/ljust läge -------------------------------------------
     // localStorage: "dark"/"light" = användarens eget val (vinner alltid).
     // Inget sparat värde = följ systeminställningen (prefers-color-scheme).
-    const themeToggle = document.getElementById("theme-toggle");
+    const themeToggles = document.querySelectorAll(".theme-toggle");
 
     function effectiveTheme() {
       let saved = null;
@@ -233,7 +621,9 @@
 
     function applyThemeIcon() {
       // Ikonen visar vad knappen BYTER TILL, inte vad som är aktivt just nu.
-      themeToggle.textContent = effectiveTheme() === "dark" ? "☀️" : "🌙";
+      themeToggles.forEach((btn) => {
+        btn.innerHTML = effectiveTheme() === "dark" ? ICONS.sun : ICONS.moon;
+      });
     }
 
     function toggleTheme() {
@@ -251,9 +641,10 @@
       }
       applyThemeIcon();
     })();
-    themeToggle.addEventListener("click", toggleTheme);
+    themeToggles.forEach((btn) => btn.addEventListener("click", toggleTheme));
 
     const messagesDiv = document.getElementById("messages");
+    const messagesInner = document.getElementById("messages-inner");
     const input = document.getElementById("input");
     const sendButton = document.getElementById("send");
     const conversationListDiv = document.getElementById("conversation-list");
@@ -278,7 +669,7 @@
         const response = await fetch("/models");
         const data = await response.json();
         if (data.error) {
-          addMessage("ai", "Error: " + data.error);
+          addAssistantError(data.error);
           return;
         }
         modelInfo = data.models;
@@ -286,13 +677,28 @@
           modelSelect.add(new Option(m.name, m.name));
         }
         updateThinkBox();
+        renderBenchModels();
       } catch (error) {
-        addMessage("ai", "Error: " + error);
+        addAssistantError(String(error));
       }
     }
 
     modelSelect.addEventListener("change", updateThinkBox);
     loadModels();
+
+    // --- Auto-växande textruta, Enter skickar / Shift+Enter ny rad ------
+    function autoGrow() {
+      input.style.height = "auto";
+      input.style.height = Math.min(input.scrollHeight, 200) + "px";
+    }
+    input.addEventListener("input", autoGrow);
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        sendMessage();
+      }
+    });
+    sendButton.addEventListener("click", sendMessage);
 
     // --- Minimal markdown-rendering, utan externa bibliotek -------------
     // Täcker det som modellerna faktiskt använder i praktiken: rubriker,
@@ -355,13 +761,32 @@
       return text;
     }
 
-    function addMessage(cssClass, text) {
-      const div = document.createElement("div");
-      div.className = cssClass;
-      div.textContent = text;
-      messagesDiv.appendChild(div);
+    function scrollToBottom() {
       messagesDiv.scrollTop = messagesDiv.scrollHeight;
-      return div;
+    }
+
+    function addUserMessage(text) {
+      const row = document.createElement("div");
+      row.className = "msg-row user";
+      const bubble = document.createElement("div");
+      bubble.className = "bubble";
+      bubble.textContent = text;
+      row.appendChild(bubble);
+      messagesInner.appendChild(row);
+      scrollToBottom();
+      return row;
+    }
+
+    function addAssistantError(text) {
+      const row = document.createElement("div");
+      row.className = "msg-row assistant";
+      const content = document.createElement("div");
+      content.className = "answer-content";
+      content.style.color = "var(--danger)";
+      content.textContent = text;
+      row.appendChild(content);
+      messagesInner.appendChild(row);
+      scrollToBottom();
     }
 
     // --- Sidopanel: lista konversationer ---------------------------
@@ -372,42 +797,105 @@
         const data = await response.json();
         conversationListDiv.innerHTML = "";
         for (const conv of data.conversations) {
-          const item = document.createElement("div");
-          item.className = "conv-item" + (conv.id === currentConversationId ? " active" : "");
-          item.textContent = conv.title;
-          item.addEventListener("click", () => openConversation(conv.id));
-          conversationListDiv.appendChild(item);
+          conversationListDiv.appendChild(buildConversationItem(conv));
         }
       } catch (error) {
         console.error("Could not load conversations:", error);
       }
     }
 
+    function buildConversationItem(conv) {
+      const item = document.createElement("div");
+      item.className = "conv-item" + (conv.id === currentConversationId ? " active" : "");
+
+      const title = document.createElement("span");
+      title.className = "conv-title";
+      title.textContent = conv.title;
+      item.appendChild(title);
+
+      const deleteBtn = document.createElement("button");
+      deleteBtn.className = "conv-delete";
+      deleteBtn.innerHTML = ICONS.trash;
+      deleteBtn.title = "Delete conversation";
+      deleteBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        showDeleteConfirm(item, conv);
+      });
+      item.appendChild(deleteBtn);
+
+      item.addEventListener("click", () => openConversation(conv.id));
+      return item;
+    }
+
+    function showDeleteConfirm(item, conv) {
+      item.innerHTML = "";
+      item.classList.add("confirm-active");
+
+      const wrap = document.createElement("div");
+      wrap.className = "conv-confirm";
+
+      const label = document.createElement("span");
+      label.textContent = "Delete?";
+
+      const yesBtn = document.createElement("button");
+      yesBtn.className = "confirm-yes";
+      yesBtn.textContent = "Delete";
+      yesBtn.addEventListener("click", async (e) => {
+        e.stopPropagation();
+        await fetch(`/conversations/${conv.id}`, { method: "DELETE" });
+        if (conv.id === currentConversationId) {
+          currentConversationId = null;
+          history = [];
+          messagesInner.innerHTML = "";
+        }
+        loadConversations();
+      });
+
+      const noBtn = document.createElement("button");
+      noBtn.className = "confirm-no";
+      noBtn.textContent = "Cancel";
+      noBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        loadConversations();
+      });
+
+      wrap.appendChild(label);
+      wrap.appendChild(yesBtn);
+      wrap.appendChild(noBtn);
+      item.appendChild(wrap);
+    }
+
     async function openConversation(id) {
+      showView("chat");
       currentConversationId = id;
-      messagesDiv.innerHTML = "";
+      messagesInner.innerHTML = "";
       history = [];
 
       const response = await fetch(`/conversations/${id}/messages`);
       const data = await response.json();
       for (const msg of data.messages) {
-        const isUser = msg.role === "user";
-        const div = addMessage(isUser ? "user" : "ai", isUser ? "You: " + msg.content : "AI: ");
-        if (!isUser) {
-          const content = document.createElement("span");
+        if (msg.role === "user") {
+          addUserMessage(msg.content);
+        } else {
+          const row = document.createElement("div");
+          row.className = "msg-row assistant";
+          const content = document.createElement("div");
           content.className = "answer-content";
           content.innerHTML = renderMarkdown(msg.content);
-          div.appendChild(content);
+          row.appendChild(content);
+          messagesInner.appendChild(row);
         }
         history.push({ role: msg.role, content: msg.content });
       }
+      scrollToBottom();
       loadConversations(); // för att uppdatera vilken som är "active"
     }
 
     newConversationButton.addEventListener("click", () => {
+      showView("chat");
       currentConversationId = null;
       history = [];
-      messagesDiv.innerHTML = "";
+      messagesInner.innerHTML = "";
       loadConversations();
     });
 
@@ -417,48 +905,46 @@
       const text = input.value.trim();
       if (text === "") return;
       input.value = "";
-      addMessage("user", "You: " + text);
+      autoGrow();
+      addUserMessage(text);
       history.push({ role: "user", content: text });
 
-      // Ett wrapper-element som innehåller en ihopfällbar thinking-sektion
-      // (visas bara om modellen faktiskt skickar tänkande-text) och själva
-      // svarstexten. De hålls separata hela vägen, så de blandas aldrig ihop.
-      const wrapper = document.createElement("div");
-      wrapper.className = "ai";
+      const row = document.createElement("div");
+      row.className = "msg-row assistant";
 
+      // Ihopfällbar thinking-sektion (visas bara om modellen faktiskt
+      // skickar tänkande-text) och själva svarstexten hålls separata
+      // hela vägen, så de blandas aldrig ihop visuellt.
       const thinkingBlock = document.createElement("details");
       thinkingBlock.className = "thinking-block";
-      thinkingBlock.style.display = "none"; // visas bara om det faktiskt kommer tänkande-text
+      thinkingBlock.style.display = "none";
       const thinkingSummary = document.createElement("summary");
-      thinkingSummary.textContent = "Visa resonemang";
+      thinkingSummary.innerHTML = '<span class="thinking-dot"></span><span class="thinking-label">Thinking…</span>';
       const thinkingText = document.createElement("div");
       thinkingText.className = "thinking-text";
       thinkingBlock.appendChild(thinkingSummary);
       thinkingBlock.appendChild(thinkingText);
 
-      // Etikett + ett separat innehållselement. Under strömningen skriver vi
-      // rå text dit (snabbt, inget parsande per token), och byter till
-      // renderad markdown först när svaret är klart - annars skulle t.ex.
-      // en halvskriven "**" flimra till som bokstavliga stjärnor och sedan
-      // hoppa om till fetstil mitt i strömmen.
-      const answerDiv = document.createElement("div");
-      const answerLabel = document.createElement("span");
-      answerLabel.textContent = "AI: ";
-      const answerContent = document.createElement("span");
+      const answerContent = document.createElement("div");
       answerContent.className = "answer-content";
-      answerContent.textContent = "...";
-      const answerDuration = document.createElement("span");
-      answerDiv.appendChild(answerLabel);
-      answerDiv.appendChild(answerContent);
-      answerDiv.appendChild(answerDuration);
+      const answerMeta = document.createElement("div");
+      answerMeta.className = "answer-meta";
 
-      wrapper.appendChild(thinkingBlock);
-      wrapper.appendChild(answerDiv);
-      messagesDiv.appendChild(wrapper);
+      row.appendChild(thinkingBlock);
+      row.appendChild(answerContent);
+      row.appendChild(answerMeta);
+      messagesInner.appendChild(row);
+      scrollToBottom();
 
       let answer = "";
       let thinking = "";
       let failed = false;
+      let thinkingStarted = false;
+      let thinkingCollapsed = false;
+
+      function setThinkingLabel(text) {
+        thinkingSummary.querySelector(".thinking-label").textContent = text;
+      }
 
       function handleLine(line) {
         if (line.trim() === "") return;
@@ -472,36 +958,55 @@
           return;
         }
 
-        if (data.status === "thinking") {
-          // Servern samlar numera ihop hela svaret innan den delar upp
-          // tanke/svar (se server.py), så inget annat syns förrän allt är
-          // klart - den här signalen är bara till för att visa "tänker..."
-          // under tiden istället för ett tomt "...".
-          answerContent.textContent = "thinking...";
-          return;
-        }
-
         if (data.error || data.detail) {
           failed = true;
-          answerLabel.textContent = "Error: ";
+          answerContent.style.color = "var(--danger)";
           answerContent.textContent = JSON.stringify(data.error || data.detail);
           return;
         }
+
+        if (data.reclassify_as_answer !== undefined) {
+          // Servern upptäckte i efterhand att modellen aldrig skrev ut sin
+          // avslutande </think>-tagg - allt vi hittills visat i
+          // "tänkande"-rutan var i själva verket det riktiga svaret. Göm
+          // tänkande-rutan och flytta texten till svarsrutan istället.
+          thinkingBlock.style.display = "none";
+          thinkingText.textContent = "";
+          thinking = "";
+          answer = data.reclassify_as_answer;
+          answerContent.textContent = answer; // rå text, renderas när "done" kommer
+          scrollToBottom();
+          return;
+        }
+
         if (data.message && data.message.thinking) {
           thinking += data.message.thinking;
-          thinkingBlock.style.display = "block";
+          if (!thinkingStarted) {
+            // Open automatically only the first time; after that the user decides.
+            thinkingStarted = true;
+            thinkingBlock.style.display = "block";
+            thinkingBlock.classList.add("thinking-pending");
+            thinkingBlock.open = true;
+          }
           thinkingText.textContent = thinking;
-          if (answer === "") answerContent.textContent = "thinking...";
         }
         if (data.message && data.message.content) {
+          if (thinkingStarted && !thinkingCollapsed) {
+            // Collapse once when the answer starts, then leave it alone.
+            thinkingCollapsed = true;
+            thinkingBlock.classList.remove("thinking-pending");
+            thinkingBlock.open = false;
+            setThinkingLabel("Reasoning");
+          }
           answer += data.message.content;
           answerContent.textContent = answer; // rå text under strömningen
-          messagesDiv.scrollTop = messagesDiv.scrollHeight;
+          scrollToBottom();
         }
         if (data.done && data.total_duration) {
+          thinkingBlock.classList.remove("thinking-pending");
           const seconds = data.total_duration / 1e9;
           answerContent.innerHTML = renderMarkdown(answer); // nu är svaret klart - rendera
-          answerDuration.textContent = " (" + seconds.toFixed(1) + " s)";
+          answerMeta.textContent = seconds.toFixed(1) + " s";
         }
       }
 
@@ -535,14 +1040,198 @@
           history.push({ role: "assistant", content: answer });
         }
       } catch (error) {
-        answerDiv.textContent = "Error: " + error;
+        answerContent.style.color = "var(--danger)";
+        answerContent.textContent = String(error);
         history.pop();
       }
     }
 
-    sendButton.addEventListener("click", sendMessage);
-    input.addEventListener("keydown", (e) => {
-      if (e.key === "Enter") sendMessage();
+    // --- Views (Chat / Benchmark) -----------------------------------
+    const chatView = document.getElementById("main");
+    const benchmarkView = document.getElementById("benchmark-view");
+    const navTabs = document.querySelectorAll(".nav-tab");
+
+    function showView(name) {
+      chatView.hidden = name !== "chat";
+      benchmarkView.hidden = name !== "benchmark";
+      navTabs.forEach((tab) => tab.classList.toggle("active", tab.dataset.view === name));
+      if (name === "benchmark") loadBenchmarkHistory();
+    }
+    navTabs.forEach((tab) => tab.addEventListener("click", () => showView(tab.dataset.view)));
+
+    // --- Benchmark ----------------------------------------------------
+    const benchPrompt = document.getElementById("bench-prompt");
+    const benchPreset = document.getElementById("bench-preset");
+    const benchModelsDiv = document.getElementById("bench-models");
+    const benchRuns = document.getElementById("bench-runs");
+    const benchThink = document.getElementById("bench-think");
+    const benchRunButton = document.getElementById("bench-run");
+    const benchStatus = document.getElementById("bench-status");
+    const benchResults = document.getElementById("bench-results");
+
+    benchPreset.addEventListener("change", () => {
+      if (benchPreset.value) benchPrompt.value = benchPreset.value;
+    });
+
+    function renderBenchModels() {
+      benchModelsDiv.innerHTML = "";
+      modelInfo.forEach((m, i) => {
+        const label = document.createElement("label");
+        label.className = "bench-check";
+        label.innerHTML =
+          `<input type="checkbox" value="${escapeHtml(m.name)}" ${i < 2 ? "checked" : ""}> ` +
+          `${escapeHtml(m.name)}${m.thinking ? " <small>(thinking)</small>" : ""}`;
+        benchModelsDiv.appendChild(label);
+      });
+    }
+
+    function setBenchStatus(text, isError) {
+      benchStatus.textContent = text;
+      benchStatus.classList.toggle("error", !!isError);
+    }
+
+    async function runBenchmark() {
+      const prompt = benchPrompt.value.trim();
+      const models = [...benchModelsDiv.querySelectorAll("input:checked")].map((i) => i.value);
+      if (!prompt) return setBenchStatus("Write a prompt first.", true);
+      if (models.length === 0) return setBenchStatus("Select at least one model.", true);
+
+      benchRunButton.disabled = true;
+      setBenchStatus("Starting…");
+
+      function handleBenchLine(line) {
+        if (line.trim() === "") return;
+        const data = JSON.parse(line);
+        if (data.status) setBenchStatus(data.status);
+        if (data.result) loadBenchmarkHistory();
+        if (data.error) setBenchStatus(data.error, true);
+        if (data.done) setBenchStatus("Finished.");
+      }
+
+      try {
+        const response = await fetch("/benchmark/run", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            prompt,
+            models,
+            runs: Number(benchRuns.value) || 1,
+            think: benchThink.checked,
+          }),
+        });
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split("\n");
+          buffer = lines.pop();
+          for (const line of lines) handleBenchLine(line);
+        }
+        handleBenchLine(buffer);
+      } catch (error) {
+        setBenchStatus(String(error), true);
+      } finally {
+        benchRunButton.disabled = false;
+        loadBenchmarkHistory();
+      }
+    }
+    benchRunButton.addEventListener("click", runBenchmark);
+
+    function fmtMs(ms) {
+      if (ms == null) return "–";
+      return ms >= 1000 ? (ms / 1000).toFixed(2) + " s" : Math.round(ms) + " ms";
+    }
+    function fmtMemory(total, vram) {
+      if (!total) return "–";
+      const size = total >= 1024 ? (total / 1024).toFixed(1) + " GB" : Math.round(total) + " MB";
+      return `${size} (${Math.round((vram / total) * 100)}% GPU)`;
+    }
+
+    function renderBenchmarkHistory(runs) {
+      if (runs.length === 0) {
+        benchResults.innerHTML = '<div class="bench-empty">No benchmarks yet. Run one above.</div>';
+        return;
+      }
+
+      // Group rows by batch (one click on "Run benchmark" = one batch).
+      const batches = new Map();
+      for (const run of runs) {
+        if (!batches.has(run.batch_id)) batches.set(run.batch_id, []);
+        batches.get(run.batch_id).push(run);
+      }
+
+      let html = "";
+      for (const [batchId, rows] of batches) {
+        rows.reverse(); // oldest first inside a batch
+        const first = rows[0];
+        const date = new Date(first.created_at).toLocaleString();
+        const fastest = Math.max(...rows.map((r) => r.tokens_per_s));
+
+        html += `<div class="bench-batch" data-batch="${batchId}">
+          <div class="bench-batch-head">
+            <div>
+              <div class="bench-batch-prompt">${escapeHtml(first.prompt.length > 160 ? first.prompt.slice(0, 160) + "…" : first.prompt)}</div>
+              <div class="bench-batch-meta">${escapeHtml(date)}${first.think ? " · thinking on" : ""}</div>
+            </div>
+            <button class="bench-delete">Delete</button>
+          </div>
+          <div class="bench-table-wrap"><table class="bench-table">
+            <tr>
+              <th>Model</th><th>Run</th>
+              <th title="Time to first token: model load + prompt processing">First token</th>
+              <th>Total</th>
+              <th title="Generated tokens per second (Ollama's eval_count / eval_duration)">Tokens/s</th>
+              <th title="Tokens generated (includes thinking tokens)">Tokens</th>
+              <th title="Characters in the final answer">Chars</th>
+              <th title="Memory used by the loaded model">Memory</th>
+              <th></th>
+            </tr>`;
+        for (const r of rows) {
+          html += `<tr>
+              <td>${escapeHtml(r.model)}</td>
+              <td>${r.run_index}</td>
+              <td>${fmtMs(r.ttft_ms)}</td>
+              <td>${fmtMs(r.total_ms)}</td>
+              <td class="${r.tokens_per_s === fastest && rows.length > 1 ? "fast" : ""}">${r.tokens_per_s.toFixed(1)}</td>
+              <td>${r.eval_count}</td>
+              <td>${r.response_chars}</td>
+              <td>${fmtMemory(r.mem_total_mb, r.mem_vram_mb)}</td>
+              <td><button class="bench-view-btn">Answer</button></td>
+            </tr>
+            <tr class="bench-response" hidden><td colspan="9"><pre>${escapeHtml(r.response || "(empty answer)")}</pre></td></tr>`;
+        }
+        html += "</table></div></div>";
+      }
+      benchResults.innerHTML = html;
+    }
+
+    async function loadBenchmarkHistory() {
+      try {
+        const response = await fetch("/benchmark/history");
+        const data = await response.json();
+        renderBenchmarkHistory(data.runs);
+      } catch (error) {
+        console.error("Could not load benchmark history:", error);
+      }
+    }
+
+    benchResults.addEventListener("click", async (e) => {
+      const viewBtn = e.target.closest(".bench-view-btn");
+      if (viewBtn) {
+        const answerRow = viewBtn.closest("tr").nextElementSibling;
+        answerRow.hidden = !answerRow.hidden;
+        return;
+      }
+      const deleteBtn = e.target.closest(".bench-delete");
+      if (deleteBtn) {
+        if (!confirm("Delete this benchmark?")) return;
+        const batchId = deleteBtn.closest(".bench-batch").dataset.batch;
+        await fetch(`/benchmark/${batchId}`, { method: "DELETE" });
+        loadBenchmarkHistory();
+      }
     });
 
     loadConversations();

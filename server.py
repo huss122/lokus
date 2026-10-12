@@ -6,6 +6,7 @@ from fastapi import FastAPI
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 
+import benchmark
 import database
 
 OLLAMA = "http://localhost:11434"
@@ -83,7 +84,7 @@ def get_conversations():
 def new_conversation(request: NewConversationRequest):
     # Titeln sätts till ett platshållarvärde och byts ut när första
     # meddelandet sparas (se spara-logiken i /chat nedan).
-    conversation_id = database.create_conversation(title="Ny konversation", model=request.model)
+    conversation_id = database.create_conversation(title="New conversation", model=request.model)
     return {"id": conversation_id}
 
 
@@ -98,25 +99,42 @@ def remove_conversation(conversation_id: int):
     return {"ok": True}
 
 
+# --- Benchmark --------------------------------------------------------
+
+class BenchmarkRequest(BaseModel):
+    prompt: str
+    models: list[str]
+    runs: int = 1
+    think: bool = False
+
+
+@app.post("/benchmark/run")
+def benchmark_run(request: BenchmarkRequest):
+    runs = max(1, min(request.runs, 5))
+
+    def stream():
+        for event in benchmark.run_benchmark(
+            request.prompt, request.models, runs, request.think, supports_thinking
+        ):
+            yield json.dumps(event) + "\n"
+
+    return StreamingResponse(stream(), media_type="application/x-ndjson")
+
+
+@app.get("/benchmark/history")
+def benchmark_history():
+    return {"runs": database.list_benchmark_runs()}
+
+
+@app.delete("/benchmark/{batch_id}")
+def benchmark_delete(batch_id: str):
+    database.delete_benchmark_batch(batch_id)
+    return {"ok": True}
+
+
 # --- Chatt ------------------------------------------------------------
 
-def split_thinking(full_text: str) -> tuple[str, str]:
-    """
-    Delar en komplett textsträng i (tankedel, svarsdel) baserat på en
-    </think>-tagg, OM en sådan finns. Körs först när HELA svaret är i hand,
-    inte textbit för textbit under strömningen - en modell som inte
-    konsekvent skriver ut sin stängningstagg gör det omöjligt att veta i
-    förväg var gränsen går, och att gissa mitt i strömmen riskerade att
-    klippa texten (och till och med enskilda ord) mitt itu.
-    """
-    idx = full_text.find("</think>")
-    if idx == -1:
-        return "", full_text
-    thinking_text = full_text[:idx]
-    # Vissa modeller lämnar whitespace eller enstaka skräptecken direkt
-    # efter stängningstaggen - trimma bort det så svaret börjar rent.
-    answer_text = full_text[idx + len("</think>"):].lstrip("\n ")
-    return thinking_text, answer_text
+CLOSE_TAG = "</think>"
 
 
 def make_title(text: str) -> str:
@@ -146,6 +164,13 @@ def chat(request: ChatRequest):
             # det och fortfarande ser avbrutna svar.
             "num_ctx": 8192,
         },
+        # Ollama lägger annars modellen i vila efter 5 minuters inaktivitet
+        # (standardvärdet) och måste då ladda in den från disk igen vid
+        # nästa fråga, vilket känns som att appen är "seg" jämfört med en
+        # modell som redan är varm i minnet. 30 minuter håller den laddad
+        # genom en hel arbetssession. Kostnaden är att den upptar
+        # RAM/VRAM längre även när du inte använder den just då.
+        "keep_alive": "30m",
     }
     if request.think is not None:
         payload["think"] = request.think
@@ -153,7 +178,7 @@ def chat(request: ChatRequest):
     conversation_id = request.conversation_id
     is_new = conversation_id is None
     if is_new:
-        conversation_id = database.create_conversation(title="Ny konversation", model=request.model)
+        conversation_id = database.create_conversation(title="New conversation", model=request.model)
 
     # Spara användarens senaste meddelande (det sista i listan) direkt.
     last_user_message = messages[-1]["content"] if messages else ""
@@ -178,15 +203,30 @@ def chat(request: ChatRequest):
         # vilken konversation den nu pratar med (viktigt för nya konversationer).
         yield json.dumps({"conversation_id": conversation_id}) + "\n"
 
-        if assume_thinking:
-            # Eftersom vi inte längre strömmar tanketexten live (se nedan)
-            # skulle frontend annars bara visa "..." under hela väntetiden.
-            # Den här signalen är separat från "message.thinking" så den
-            # inte råkar blandas in i den riktiga resonemangstexten senare.
-            yield json.dumps({"status": "thinking"}) + "\n"
-
-        raw_content_parts = []  # allt content vi fått från Ollama, oklippt
-        final_line_data = None  # den sista raden (har total_duration m.m.)
+        # using_native_split blir True om Ollama SJÄLV rapporterar en separat
+        # "thinking"-del (fungerar för modeller med korrekt konfigurerat stöd,
+        # t.ex. standard-qwen3.5). Då litar vi helt på Ollama och kör aldrig
+        # vår egen tagg-tolkning på den förfrågan.
+        #
+        # Om det aldrig händer tolkar vi istället själva: modellen bakar då
+        # in <think>...</think> som vanlig text i "content"-fältet. Vi
+        # strömmar den texten live till "tänkande"-rutan tills vi hittar
+        # </think>, och växlar då till att strömma resten live som svar.
+        #
+        # Specialfall: om </think> ALDRIG dyker upp (modellen glömmer
+        # stänga sin tagg) har vi då av misstag visat hela svaret i
+        # tänkande-rutan. Det korrigeras i EFTERHAND, i en enda klumpvis
+        # ombyggnad när strömmen är slut - INTE genom att gissa mitt i
+        # strömmen var gränsen "borde" gå. Det var just den gissningen
+        # (en godtycklig gräns i textbufferten, t.ex. efter N tecken) som
+        # tidigare klippte enstaka ord mitt itu mellan de två rutorna.
+        using_native_split = False
+        custom_phase = "thinking" if assume_thinking else "content"
+        custom_buffer = ""
+        thinking_accum = []  # allt vi visat som "tänkande" via vår egen tolkning
+        saw_close_tag = False
+        answer_parts = []
+        final_line_data = None
 
         try:
             with httpx.stream("POST", OLLAMA + "/api/chat", json=payload, timeout=300) as response:
@@ -199,14 +239,47 @@ def chat(request: ChatRequest):
                     content = msg.get("content") or ""
 
                     if native_thinking:
-                        # Ollama separerar redan tanke/svar åt oss (fungerar
-                        # för modeller med korrekt konfigurerat stöd, t.ex.
-                        # standard-qwen3.5). Då finns ingen anledning att vi
-                        # själva gissar något - skicka vidare direkt, live.
+                        using_native_split = True
                         yield line + "\n"
-
-                    if content:
-                        raw_content_parts.append(content)
+                    elif using_native_split:
+                        # Ollama har redan visat sig sköta uppdelningen
+                        # korrekt för den här förfrågan - lita på den även
+                        # för rena content-rader (t.ex. själva svarstexten).
+                        if content:
+                            answer_parts.append(content)
+                        yield line + "\n"
+                    elif content:
+                        if custom_phase == "content":
+                            answer_parts.append(content)
+                            yield json.dumps({"message": {"content": content, "thinking": None}}) + "\n"
+                        else:
+                            custom_buffer += content
+                            idx = custom_buffer.find(CLOSE_TAG)
+                            if idx != -1:
+                                pre = custom_buffer[:idx]
+                                if pre:
+                                    thinking_accum.append(pre)
+                                    yield json.dumps({"message": {"thinking": pre, "content": ""}}) + "\n"
+                                # Vissa modeller lämnar kvar whitespace eller
+                                # enstaka skräptecken direkt efter taggen.
+                                rest = custom_buffer[idx + len(CLOSE_TAG):].lstrip("\n ")
+                                custom_buffer = ""
+                                custom_phase = "content"
+                                saw_close_tag = True
+                                if rest:
+                                    answer_parts.append(rest)
+                                    yield json.dumps({"message": {"content": rest, "thinking": None}}) + "\n"
+                            else:
+                                # Håll kvar så många tecken att en tagg som
+                                # delats itu mellan två chunkar inte missas.
+                                hold_back = len(CLOSE_TAG) - 1
+                                if len(custom_buffer) > hold_back:
+                                    emit, custom_buffer = custom_buffer[:-hold_back], custom_buffer[-hold_back:]
+                                    if emit:
+                                        thinking_accum.append(emit)
+                                        yield json.dumps({"message": {"thinking": emit, "content": ""}}) + "\n"
+                    else:
+                        yield line + "\n"
 
                     if data.get("done"):
                         final_line_data = data
@@ -214,26 +287,27 @@ def chat(request: ChatRequest):
             yield json.dumps({"error": f"Could not reach Ollama: {error}"}) + "\n"
             return
 
-        full_content = "".join(raw_content_parts)
+        if custom_buffer:
+            thinking_accum.append(custom_buffer)
+            custom_buffer = ""
 
-        if assume_thinking:
-            # Nu har vi HELA svaret i hand - dela upp det i ett enda steg
-            # istället för att gissa oss fram bit för bit medan det strömmar.
-            thinking_text, answer_text = split_thinking(full_content)
-        else:
-            thinking_text, answer_text = "", full_content
-
-        if thinking_text:
-            yield json.dumps({"message": {"thinking": thinking_text, "content": ""}}) + "\n"
-        if answer_text:
-            yield json.dumps({"message": {"content": answer_text, "thinking": None}}) + "\n"
+        if (not using_native_split) and assume_thinking and not saw_close_tag:
+            # </think> dök aldrig upp. Allt vi strömmade till tänkande-rutan
+            # var i själva verket det riktiga svaret - klassa om det i en
+            # enda klumpvis operation nu när vi har allt, och be frontend
+            # flytta det till svarsrutan istället för att gömma det.
+            full_text = "".join(thinking_accum)
+            if full_text:
+                yield json.dumps({"reclassify_as_answer": full_text}) + "\n"
+                answer_parts = [full_text]
 
         # Skicka den sista raden (total_duration m.m.) sist, så frontend vet
         # att allt är klart och kan visa tiden.
         if final_line_data is not None:
             yield json.dumps(final_line_data) + "\n"
 
-        if answer_text:
-            database.add_message(conversation_id, "assistant", answer_text)
+        full_answer = "".join(answer_parts)
+        if full_answer:
+            database.add_message(conversation_id, "assistant", full_answer)
 
     return StreamingResponse(stream(), media_type="application/x-ndjson")

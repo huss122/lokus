@@ -6,6 +6,8 @@ import database
 
 OLLAMA = "http://localhost:11434"
 MAX_TOKENS = 1024  # cap per answer, so a rambling model can't run forever
+# Thinking and answer share the same cap, so thinking runs need more room.
+MAX_TOKENS_THINKING = 4096
 
 
 def _chat_once(model: str, prompt: str, think: bool | None, max_tokens: int) -> dict:
@@ -52,6 +54,7 @@ def run_benchmark(prompt: str, models: list[str], runs: int, think: bool, suppor
         for model in models:
             # Only send the think flag to models that support it.
             think_arg = think if supports_thinking(model) else None
+            max_tokens = MAX_TOKENS_THINKING if think_arg else MAX_TOKENS
 
             # Warm-up: loads the model into memory so load time doesn't
             # pollute the measured runs. Result is discarded.
@@ -60,7 +63,7 @@ def run_benchmark(prompt: str, models: list[str], runs: int, think: bool, suppor
 
             for run_index in range(1, runs + 1):
                 yield {"status": f"{model}: run {run_index}/{runs}…"}
-                data = _chat_once(model, prompt, think_arg, MAX_TOKENS)
+                data = _chat_once(model, prompt, think_arg, max_tokens)
 
                 message = data.get("message", {}) or {}
                 content = message.get("content") or ""
@@ -90,6 +93,8 @@ def run_benchmark(prompt: str, models: list[str], runs: int, think: bool, suppor
                     "mem_total_mb": mem_total,
                     "mem_vram_mb": mem_vram,
                     "response": content,
+                    # "stop" = model finished, "length" = hit max_tokens (answer cut off or missing)
+                    "done_reason": data.get("done_reason"),
                 }
                 database.add_benchmark_run(row)
                 yield {"result": True}

@@ -497,6 +497,7 @@
     .bench-table th { font-weight: 500; color: var(--text-muted); font-size: 0.78rem; }
     .bench-table tr:last-child td { border-bottom: none; }
     .bench-table td.fast { color: var(--accent); font-weight: 600; }
+    .bench-cut { color: var(--danger); font-size: 0.75rem; font-weight: 600; margin-left: 6px; cursor: help; }
     .bench-view-btn {
       border: 1px solid var(--border);
       background: var(--bg);
@@ -1190,6 +1191,10 @@
               <th></th>
             </tr>`;
         for (const r of rows) {
+          // done_reason "length" = the token cap was hit; old rows have no done_reason.
+          const cut = r.done_reason === "length"
+            ? `<span class="bench-cut" title="Hit the token limit before finishing. The answer is cut off or missing, so this row does not measure a complete answer.">${r.response_chars === 0 ? "no answer" : "cut off"}</span>`
+            : "";
           html += `<tr>
               <td>${escapeHtml(r.model)}</td>
               <td>${r.run_index}</td>
@@ -1197,7 +1202,7 @@
               <td>${fmtMs(r.total_ms)}</td>
               <td class="${r.tokens_per_s === fastest && rows.length > 1 ? "fast" : ""}">${r.tokens_per_s.toFixed(1)}</td>
               <td>${r.eval_count}</td>
-              <td>${r.response_chars}</td>
+              <td>${r.response_chars}${cut}</td>
               <td>${fmtMemory(r.mem_total_mb, r.mem_vram_mb)}</td>
               <td><button class="bench-view-btn">Answer</button></td>
             </tr>

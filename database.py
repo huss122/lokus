@@ -49,9 +49,14 @@ def init_db():
             thinking_chars INTEGER,
             mem_total_mb REAL,
             mem_vram_mb REAL,
-            response TEXT
+            response TEXT,
+            done_reason TEXT
         )
     """)
+    # Older databases were created without done_reason; add it without touching existing rows.
+    columns = [row["name"] for row in conn.execute("PRAGMA table_info(benchmark_runs)")]
+    if "done_reason" not in columns:
+        conn.execute("ALTER TABLE benchmark_runs ADD COLUMN done_reason TEXT")
     conn.commit()
     conn.close()
 
@@ -111,11 +116,11 @@ def add_benchmark_run(row: dict):
         INSERT INTO benchmark_runs (
             batch_id, created_at, model, prompt, think, run_index, load_ms,
             ttft_ms, total_ms, eval_count, tokens_per_s, response_chars,
-            thinking_chars, mem_total_mb, mem_vram_mb, response
+            thinking_chars, mem_total_mb, mem_vram_mb, response, done_reason
         ) VALUES (
             :batch_id, :created_at, :model, :prompt, :think, :run_index, :load_ms,
             :ttft_ms, :total_ms, :eval_count, :tokens_per_s, :response_chars,
-            :thinking_chars, :mem_total_mb, :mem_vram_mb, :response
+            :thinking_chars, :mem_total_mb, :mem_vram_mb, :response, :done_reason
         )
         """,
         {**row, "created_at": datetime.now(timezone.utc).isoformat()},

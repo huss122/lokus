@@ -23,13 +23,17 @@ _capabilities_cache: dict[str, list[str]] = {}
 
 
 def get_capabilities(model: str) -> list[str]:
-    if model not in _capabilities_cache:
-        try:
-            info = httpx.post(OLLAMA + "/api/show", json={"model": model}, timeout=10).json()
-            _capabilities_cache[model] = info.get("capabilities", [])
-        except httpx.HTTPError:
-            _capabilities_cache[model] = []
-    return _capabilities_cache[model]
+    if model in _capabilities_cache:
+        return _capabilities_cache[model]
+    try:
+        response = httpx.post(OLLAMA + "/api/show", json={"model": model}, timeout=10)
+        response.raise_for_status()
+        capabilities = response.json().get("capabilities", [])
+    except httpx.HTTPError:
+        # Don't cache failures: if Ollama was down we want to ask again next time.
+        return []
+    _capabilities_cache[model] = capabilities
+    return capabilities
 
 
 def supports_thinking(model: str) -> bool:

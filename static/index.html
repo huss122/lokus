@@ -18,7 +18,7 @@
       --danger: #c23b2e;
       --code-bg: #eeeeec;
     }
-    /* Mörkt läge via systeminställning, om inget eget val gjorts. */
+    /* Dark mode from the system setting, unless the user picked one. */
     @media (prefers-color-scheme: dark) {
       :root:not([data-theme="light"]) {
         --bg: #15171c;
@@ -34,7 +34,7 @@
         --code-bg: #20232a;
       }
     }
-    /* Mörkt läge via knappen, oavsett systeminställning. */
+    /* Dark mode picked with the toggle, regardless of the system setting. */
     :root[data-theme="dark"] {
       --bg: #15171c;
       --bg-sidebar: #101216;
@@ -74,7 +74,7 @@
     }
     svg { display: block; }
 
-    /* --- Sidopanel --- */
+    /* --- Sidebar --- */
     #sidebar {
       width: 264px;
       flex-shrink: 0;
@@ -188,7 +188,7 @@
     .conv-confirm .confirm-no { color: var(--text-muted); }
     .conv-confirm .confirm-no:hover { background: var(--border); }
 
-    /* --- Huvudyta --- */
+    /* --- Main area --- */
     #main, #benchmark-view {
       flex: 1;
       display: flex;
@@ -246,7 +246,7 @@
     .theme-toggle:hover { background: var(--surface-hover); color: var(--text); }
     .theme-toggle svg { width: 17px; height: 17px; }
 
-    /* --- Meddelanden --- */
+    /* --- Messages --- */
     #messages {
       flex: 1;
       overflow-y: auto;
@@ -312,7 +312,7 @@
       border-left: 2px solid var(--border);
     }
 
-    /* --- Renderad markdown i AI-svar --- */
+    /* --- Rendered markdown in answers --- */
     .answer-content p { margin: 0.5rem 0; }
     .answer-content p:first-child { margin-top: 0; }
     .answer-content p:last-child { margin-bottom: 0; }
@@ -341,7 +341,7 @@
     }
     .answer-content pre code { background: none; padding: 0; }
 
-    /* --- Inmatning --- */
+    /* --- Input --- */
     #input-area {
       flex-shrink: 0;
       padding: 0.9rem 1.25rem 1.1rem;
@@ -608,20 +608,19 @@
       trash: '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 6h11M8.2 6V4.6c0-.4.4-.8.9-.8h1.8c.5 0 .9.4.9.8V6M6.2 6l.5 9.1c0 .5.5.9 1 .9h4.6c.5 0 .9-.4 1-.9L13.8 6"/></svg>',
     };
 
-    // --- Mörkt/ljust läge -------------------------------------------
-    // localStorage: "dark"/"light" = användarens eget val (vinner alltid).
-    // Inget sparat värde = följ systeminställningen (prefers-color-scheme).
+    // --- Dark/light mode -------------------------------------------
+    // Saved "dark"/"light" is the user's choice; nothing saved = follow the system.
     const themeToggles = document.querySelectorAll(".theme-toggle");
 
     function effectiveTheme() {
       let saved = null;
-      try { saved = localStorage.getItem("theme"); } catch (e) { /* t.ex. privat läge */ }
+      try { saved = localStorage.getItem("theme"); } catch (e) { /* e.g. private browsing */ }
       if (saved === "dark" || saved === "light") return saved;
       return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
     }
 
     function applyThemeIcon() {
-      // Ikonen visar vad knappen BYTER TILL, inte vad som är aktivt just nu.
+      // The icon shows what the button switches TO.
       themeToggles.forEach((btn) => {
         btn.innerHTML = effectiveTheme() === "dark" ? ICONS.sun : ICONS.moon;
       });
@@ -629,14 +628,14 @@
 
     function toggleTheme() {
       const next = effectiveTheme() === "dark" ? "light" : "dark";
-      try { localStorage.setItem("theme", next); } catch (e) { /* t.ex. privat läge */ }
+      try { localStorage.setItem("theme", next); } catch (e) { /* e.g. private browsing */ }
       document.documentElement.dataset.theme = next;
       applyThemeIcon();
     }
 
     (function initTheme() {
       let saved = null;
-      try { saved = localStorage.getItem("theme"); } catch (e) { /* t.ex. privat läge */ }
+      try { saved = localStorage.getItem("theme"); } catch (e) { /* e.g. private browsing */ }
       if (saved === "dark" || saved === "light") {
         document.documentElement.dataset.theme = saved;
       }
@@ -652,7 +651,7 @@
     const newConversationButton = document.getElementById("new-conversation");
 
     let history = [];
-    let currentConversationId = null; // null = ingen konversation sparad ännu
+    let currentConversationId = null; // null = not saved yet
 
     const modelSelect = document.getElementById("model");
     const thinkBox = document.getElementById("think");
@@ -687,7 +686,7 @@
     modelSelect.addEventListener("change", updateThinkBox);
     loadModels();
 
-    // --- Auto-växande textruta, Enter skickar / Shift+Enter ny rad ------
+    // --- Auto-growing input, Enter sends / Shift+Enter new line ------
     function autoGrow() {
       input.style.height = "auto";
       input.style.height = Math.min(input.scrollHeight, 200) + "px";
@@ -701,20 +700,15 @@
     });
     sendButton.addEventListener("click", sendMessage);
 
-    // --- Minimal markdown-rendering, utan externa bibliotek -------------
-    // Täcker det som modellerna faktiskt använder i praktiken: rubriker,
-    // fetstil/kursiv, inline-kod, kodblock och punkt-/numrerade listor.
-    // Inte hela markdown-standarden (t.ex. tabeller eller länkar saknas),
-    // men det täcker 95% av vad som faktiskt dyker upp i AI-svar.
+    // --- Minimal markdown rendering, no external libraries -------------
+    // Covers what models actually use: headings, bold/italic, code, lists. No tables or links.
 
     function escapeHtml(s) {
       return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
     }
 
     function renderMarkdown(raw) {
-      // Kodblock plockas ut FÖRST och ersätts med platshållare, så att
-      // resten av reglerna (fetstil, listor m.m.) inte råkar tolka
-      // tecken som finns inuti kod.
+      // Pull out code blocks first so the other rules don't touch their contents.
       const codeBlocks = [];
       let text = raw.replace(/```(\w*)\n?([\s\S]*?)```/g, (_match, _lang, code) => {
         const idx = codeBlocks.length;
@@ -734,7 +728,7 @@
       text = text.replace(/__([^_]+)__/g, "<strong>$1</strong>");
       text = text.replace(/\*([^*]+)\*/g, "<em>$1</em>");
 
-      // Grupperar flera på varandra följande listrader till en <ul>/<ol>.
+      // Group consecutive list lines into one <ul>/<ol>.
       text = text.replace(/(^|\n)((?:[-*] .*(?:\n|$))+)/g, (_m, pre, block) => {
         const items = block.trim().split("\n")
           .map((l) => l.replace(/^[-*] /, ""))
@@ -748,8 +742,7 @@
         return `${pre}<ol>${items}</ol>`;
       });
 
-      // Stycken: dela på tomrader. Block som redan är HTML (rubrik, lista,
-      // kodplatshållare) lämnas orörda, allt annat slås in i <p>.
+      // Paragraphs: split on blank lines. Blocks that are already HTML are left alone.
       const blockTag = /^<(h1|h2|h3|ul|ol)/;
       text = text.split(/\n{2,}/).map((block) => {
         block = block.trim();
@@ -790,7 +783,7 @@
       scrollToBottom();
     }
 
-    // --- Sidopanel: lista konversationer ---------------------------
+    // --- Sidebar: conversation list ---------------------------
 
     async function loadConversations() {
       try {
@@ -889,7 +882,7 @@
         history.push({ role: msg.role, content: msg.content });
       }
       scrollToBottom();
-      loadConversations(); // för att uppdatera vilken som är "active"
+      loadConversations(); // refresh which one is "active"
     }
 
     newConversationButton.addEventListener("click", () => {
@@ -900,7 +893,7 @@
       loadConversations();
     });
 
-    // --- Skicka meddelande ------------------------------------------
+    // --- Send message ------------------------------------------
 
     async function sendMessage() {
       const text = input.value.trim();
@@ -913,9 +906,7 @@
       const row = document.createElement("div");
       row.className = "msg-row assistant";
 
-      // Ihopfällbar thinking-sektion (visas bara om modellen faktiskt
-      // skickar tänkande-text) och själva svarstexten hålls separata
-      // hela vägen, så de blandas aldrig ihop visuellt.
+      // Thinking and answer stay in separate elements so they never mix.
       const thinkingBlock = document.createElement("details");
       thinkingBlock.className = "thinking-block";
       thinkingBlock.style.display = "none";
@@ -951,11 +942,17 @@
         if (line.trim() === "") return;
         const data = JSON.parse(line);
 
-        // Första raden i en ny konversation innehåller conversation_id
+        // First line of a new conversation carries conversation_id
         if (data.conversation_id !== undefined) {
           const isNewConversation = currentConversationId === null;
           currentConversationId = data.conversation_id;
-          if (isNewConversation) loadConversations(); // visa den nya posten i panelen
+          if (isNewConversation) loadConversations(); // show it in the sidebar
+          return;
+        }
+
+        // Last line of a new conversation: the generated title is ready.
+        if (data.title !== undefined) {
+          loadConversations();
           return;
         }
 
@@ -967,15 +964,12 @@
         }
 
         if (data.reclassify_as_answer !== undefined) {
-          // Servern upptäckte i efterhand att modellen aldrig skrev ut sin
-          // avslutande </think>-tagg - allt vi hittills visat i
-          // "tänkande"-rutan var i själva verket det riktiga svaret. Göm
-          // tänkande-rutan och flytta texten till svarsrutan istället.
+          // No </think> ever came, so it was all answer: hide the thinking box and move the text.
           thinkingBlock.style.display = "none";
           thinkingText.textContent = "";
           thinking = "";
           answer = data.reclassify_as_answer;
-          answerContent.textContent = answer; // rå text, renderas när "done" kommer
+          answerContent.textContent = answer; // raw text, rendered when "done" arrives
           scrollToBottom();
           return;
         }
@@ -1000,13 +994,13 @@
             setThinkingLabel("Reasoning");
           }
           answer += data.message.content;
-          answerContent.textContent = answer; // rå text under strömningen
+          answerContent.textContent = answer; // raw text while streaming
           scrollToBottom();
         }
         if (data.done && data.total_duration) {
           thinkingBlock.classList.remove("thinking-pending");
           const seconds = data.total_duration / 1e9;
-          answerContent.innerHTML = renderMarkdown(answer); // nu är svaret klart - rendera
+          answerContent.innerHTML = renderMarkdown(answer); // answer complete, render markdown
           answerMeta.textContent = seconds.toFixed(1) + " s";
         }
       }

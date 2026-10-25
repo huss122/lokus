@@ -102,6 +102,13 @@ def add_message(conversation_id: int, role: str, content: str):
     conn.close()
 
 
+def rename_conversation(conversation_id: int, title: str):
+    conn = get_connection()
+    conn.execute("UPDATE conversations SET title = ? WHERE id = ?", (title, conversation_id))
+    conn.commit()
+    conn.close()
+
+
 def delete_conversation(conversation_id: int):
     conn = get_connection()
     conn.execute("DELETE FROM conversations WHERE id = ?", (conversation_id,))

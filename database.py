@@ -109,6 +109,21 @@ def rename_conversation(conversation_id: int, title: str):
     conn.close()
 
 
+def delete_last_assistant_message(conversation_id: int):
+    # Only if the newest message is an answer; a question is never removed.
+    conn = get_connection()
+    conn.execute(
+        """
+        DELETE FROM messages WHERE id = (
+            SELECT id FROM messages WHERE conversation_id = ? ORDER BY id DESC LIMIT 1
+        ) AND role = 'assistant'
+        """,
+        (conversation_id,),
+    )
+    conn.commit()
+    conn.close()
+
+
 def delete_conversation(conversation_id: int):
     conn = get_connection()
     conn.execute("DELETE FROM conversations WHERE id = ?", (conversation_id,))

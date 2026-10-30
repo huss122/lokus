@@ -1,9 +1,11 @@
 import json
+from datetime import date
 from pathlib import Path
 
 import httpx
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse, StreamingResponse
+from starlette.concurrency import iterate_in_threadpool
 from pydantic import BaseModel
 
 import benchmark
@@ -47,11 +49,27 @@ class ChatRequest(BaseModel):
     messages: list[Message]
     model: str = DEFAULT_MODEL
     think: bool | None = None
-    conversation_id: int | None = None  # None = start a new conversation
+    conversation_id: int | None = None
+    # Replace the last answer instead of answering a new question.
+    regenerate: bool = False
 
 
 class NewConversationRequest(BaseModel):
     model: str = DEFAULT_MODEL
+
+
+# Must describe only what the code actually allows; update it when tools are added.
+BASE_PROMPT = (
+    "You are Lokus, a local AI assistant running entirely on the user's own computer through Ollama.\n"
+    "Model: {model}. Today's date: {today}.\n"
+    "You can only read and write text in this chat. You cannot open, read or create files, "
+    "browse the web or run code. If asked to, say so plainly instead of pretending.\n"
+    "Unless told otherwise, reply in the user's language."
+)
+
+
+def build_system_prompt(model: str) -> str:
+    return BASE_PROMPT.format(model=model, today=date.today().isoformat())
 
 
 @app.get("/")
@@ -194,10 +212,12 @@ def generate_title(question: str) -> str | None:
 
 @app.post("/chat")
 def chat(request: ChatRequest):
-    messages = [{"role": m.role, "content": m.content} for m in request.messages]
+    # System instructions come only from the server, never from the client's history.
+    messages = [{"role": m.role, "content": m.content} for m in request.messages if m.role != "system"]
     payload = {
         "model": request.model,
-        "messages": messages,
+        # Base prompt first and identical between messages, so Ollama can reuse it from cache.
+        "messages": [{"role": "system", "content": build_system_prompt(request.model)}] + messages,
         "stream": True,
         "options": {
             # Ollama's default cap can end a thinking model before it answers. -1 = no cap.
@@ -213,12 +233,18 @@ def chat(request: ChatRequest):
 
     conversation_id = request.conversation_id
     is_new = conversation_id is None
+    if request.regenerate and is_new:
+        raise HTTPException(status_code=400, detail="Regenerate needs an existing conversation.")
     if is_new:
         conversation_id = database.create_conversation(title="New conversation", model=request.model)
 
-    # Only the newest message; earlier ones are already saved.
     last_user_message = messages[-1]["content"] if messages else ""
-    database.add_message(conversation_id, "user", last_user_message)
+    if request.regenerate:
+        # The question is already saved; only the old answer goes.
+        database.delete_last_assistant_message(conversation_id)
+    else:
+        # Only the newest message; earlier ones are already saved.
+        database.add_message(conversation_id, "user", last_user_message)
     if is_new:
         # Placeholder so the sidebar shows something while the answer streams.
         database.rename_conversation(conversation_id, make_title(last_user_message))
@@ -296,6 +322,13 @@ def chat(request: ChatRequest):
         except httpx.HTTPError as error:
             yield json.dumps({"error": f"Could not reach Ollama: {error}"}) + "\n"
             return
+        except GeneratorExit:
+            # The client stopped the answer. Leaving the with-block closed the connection,
+            # which makes Ollama stop generating. Keep what the user already saw.
+            partial = "".join(answer_parts)
+            if partial:
+                database.add_message(conversation_id, "assistant", partial)
+            raise
 
         if custom_buffer:
             thinking_accum.append(custom_buffer)
@@ -308,13 +341,14 @@ def chat(request: ChatRequest):
                 yield json.dumps({"reclassify_as_answer": full_text}) + "\n"
                 answer_parts = [full_text]
 
-        # Final line (with total_duration) goes last, so the frontend knows the stream is done.
-        if final_line_data is not None:
-            yield json.dumps(final_line_data) + "\n"
-
+        # Save before the last yield, in case the client disconnects right there.
         full_answer = "".join(answer_parts)
         if full_answer:
             database.add_message(conversation_id, "assistant", full_answer)
+
+        # Final line (with total_duration) goes last, so the frontend knows the stream is done.
+        if final_line_data is not None:
+            yield json.dumps(final_line_data) + "\n"
 
         # After the answer, so the user never waits and the models don't share the CPU.
         if is_new and full_answer:
@@ -323,4 +357,14 @@ def chat(request: ChatRequest):
                 database.rename_conversation(conversation_id, title)
                 yield json.dumps({"title": title}) + "\n"
 
-    return StreamingResponse(stream(), media_type="application/x-ndjson")
+    return StreamingResponse(close_when_done(stream()), media_type="application/x-ndjson")
+
+
+async def close_when_done(generator):
+    # Starlette never closes a sync generator when the client disconnects, so the
+    # request to Ollama would keep generating. Iterate it here and always close it.
+    try:
+        async for chunk in iterate_in_threadpool(generator):
+            yield chunk
+    finally:
+        generator.close()

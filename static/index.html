@@ -274,7 +274,19 @@
       margin-top: 0.4rem;
       font-size: 0.78rem;
       color: var(--text-muted);
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
     }
+    .regen-btn {
+      font-size: 0.75rem;
+      padding: 0.1rem 0.55rem;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: transparent;
+      color: var(--text-muted);
+    }
+    .regen-btn:hover { background: var(--surface-hover); color: var(--text); }
 
     .thinking-block {
       margin: 0 0 0.6rem;
@@ -605,6 +617,7 @@
     const ICONS = {
       sun: '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="10" cy="10" r="3.3"/><path d="M10 2.5v2M10 15.5v2M17.5 10h-2M4.5 10h-2M15.3 4.7l-1.4 1.4M6.1 13.9l-1.4 1.4M15.3 15.3l-1.4-1.4M6.1 6.1L4.7 4.7"/></svg>',
       moon: '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M16.5 12.2A7 7 0 1 1 7.8 3.5a5.7 5.7 0 0 0 8.7 8.7Z"/></svg>',
+      stop: '<svg viewBox="0 0 20 20" fill="currentColor"><rect x="5.5" y="5.5" width="9" height="9" rx="1.5"/></svg>',
       trash: '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 6h11M8.2 6V4.6c0-.4.4-.8.9-.8h1.8c.5 0 .9.4.9.8V6M6.2 6l.5 9.1c0 .5.5.9 1 .9h4.6c.5 0 .9-.4 1-.9L13.8 6"/></svg>',
     };
 
@@ -698,7 +711,21 @@
         sendMessage();
       }
     });
-    sendButton.addEventListener("click", sendMessage);
+
+    // While an answer streams, the send button becomes a stop button.
+    const SEND_ICON = sendButton.innerHTML;
+    let streamController = null; // set while an answer streams
+
+    function setStreaming(on) {
+      sendButton.innerHTML = on ? ICONS.stop : SEND_ICON;
+      sendButton.title = on ? "Stop" : "Send";
+    }
+
+    function stopStreaming() {
+      if (streamController) streamController.abort();
+    }
+
+    sendButton.addEventListener("click", () => (streamController ? stopStreaming() : sendMessage()));
 
     // --- Minimal markdown rendering, no external libraries -------------
     // Covers what models actually use: headings, bold/italic, code, lists. No tables or links.
@@ -860,6 +887,7 @@
     }
 
     async function openConversation(id) {
+      stopStreaming();
       showView("chat");
       currentConversationId = id;
       messagesInner.innerHTML = "";
@@ -881,11 +909,30 @@
         }
         history.push({ role: msg.role, content: msg.content });
       }
+      const lastRow = messagesInner.lastElementChild;
+      if (lastRow && lastRow.classList.contains("assistant")) addRegenerateButton(lastRow);
       scrollToBottom();
       loadConversations(); // refresh which one is "active"
     }
 
+    function addRegenerateButton(row) {
+      // Only the newest answer can be regenerated.
+      document.querySelectorAll(".regen-btn").forEach((btn) => btn.remove());
+      let meta = row.querySelector(".answer-meta");
+      if (!meta) {
+        meta = document.createElement("div");
+        meta.className = "answer-meta";
+        row.appendChild(meta);
+      }
+      const button = document.createElement("button");
+      button.className = "regen-btn";
+      button.textContent = "Regenerate";
+      button.addEventListener("click", regenerate);
+      meta.appendChild(button);
+    }
+
     newConversationButton.addEventListener("click", () => {
+      stopStreaming();
       showView("chat");
       currentConversationId = null;
       history = [];
@@ -896,13 +943,28 @@
     // --- Send message ------------------------------------------
 
     async function sendMessage() {
+      if (streamController) return;
       const text = input.value.trim();
       if (text === "") return;
       input.value = "";
       autoGrow();
       addUserMessage(text);
       history.push({ role: "user", content: text });
+      await streamAnswer(false);
+    }
 
+    async function regenerate() {
+      if (streamController || currentConversationId === null) return;
+      if (history.length && history[history.length - 1].role === "assistant") history.pop();
+      const lastRow = messagesInner.lastElementChild;
+      if (lastRow && lastRow.classList.contains("assistant")) lastRow.remove();
+      await streamAnswer(true);
+    }
+
+    async function streamAnswer(isRegenerate) {
+      document.querySelectorAll(".regen-btn").forEach((btn) => btn.remove());
+      // Switching conversation replaces `history`; a stopped stream must not touch the new one.
+      const streamHistory = history;
       const row = document.createElement("div");
       row.className = "msg-row assistant";
 
@@ -994,26 +1056,37 @@
             setThinkingLabel("Reasoning");
           }
           answer += data.message.content;
-          answerContent.textContent = answer; // raw text while streaming
+          answerContent.textContent = answer;
           scrollToBottom();
         }
         if (data.done && data.total_duration) {
           thinkingBlock.classList.remove("thinking-pending");
-          const seconds = data.total_duration / 1e9;
-          answerContent.innerHTML = renderMarkdown(answer); // answer complete, render markdown
-          answerMeta.textContent = seconds.toFixed(1) + " s";
+          answerContent.innerHTML = renderMarkdown(answer);
+          // Same definition as the benchmark: model load + reading the prompt.
+          const firstToken = ((data.load_duration || 0) + (data.prompt_eval_duration || 0)) / 1e9;
+          const parts = [
+            firstToken.toFixed(1) + " s to first token",
+            (data.total_duration / 1e9).toFixed(1) + " s total",
+          ];
+          if (data.prompt_eval_count) parts.push(data.prompt_eval_count + " prompt tokens read");
+          answerMeta.textContent = parts.join(" · ");
         }
       }
 
       const body = { messages: history, conversation_id: currentConversationId };
+      if (isRegenerate) body.regenerate = true;
       if (modelSelect.value) body.model = modelSelect.value;
       if (!thinkBox.disabled) body.think = thinkBox.checked;
 
+      streamController = new AbortController();
+      setStreaming(true);
+      let stopped = false;
       try {
         const response = await fetch("/chat", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(body),
+          signal: streamController.signal,
         });
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
@@ -1028,17 +1101,36 @@
           for (const line of lines) handleLine(line);
         }
         handleLine(buffer);
-
-        if (failed || answer === "") {
-          history.pop();
-        } else {
-          history.push({ role: "assistant", content: answer });
-        }
       } catch (error) {
-        answerContent.style.color = "var(--danger)";
-        answerContent.textContent = String(error);
-        history.pop();
+        if (error.name === "AbortError") {
+          stopped = true;
+        } else {
+          failed = true;
+          answerContent.style.color = "var(--danger)";
+          answerContent.textContent = String(error);
+        }
+      } finally {
+        streamController = null;
+        setStreaming(false);
       }
+
+      if (stopped) {
+        // The server keeps the question and whatever part of the answer was shown.
+        thinkingBlock.classList.remove("thinking-pending");
+        if (thinkingStarted) setThinkingLabel("Reasoning");
+        if (answer) {
+          answerContent.innerHTML = renderMarkdown(answer);
+          streamHistory.push({ role: "assistant", content: answer });
+        }
+        answerMeta.textContent = "Stopped";
+      } else if (failed || answer === "") {
+        // On regenerate the question is already saved, so it stays.
+        if (!isRegenerate) streamHistory.pop();
+        return;
+      } else {
+        streamHistory.push({ role: "assistant", content: answer });
+      }
+      if (row.isConnected) addRegenerateButton(row);
     }
 
     // --- Views (Chat / Benchmark) -----------------------------------

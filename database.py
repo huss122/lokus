@@ -53,6 +53,27 @@ def init_db():
             done_reason TEXT
         )
     """)
+    # embed_model is stored because vectors from different models can't be compared.
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS documents (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            filename TEXT NOT NULL UNIQUE,
+            embed_model TEXT NOT NULL,
+            pages INTEGER NOT NULL,
+            chars INTEGER NOT NULL,
+            added_at TEXT NOT NULL
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS chunks (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            document_id INTEGER NOT NULL REFERENCES documents (id),
+            page INTEGER NOT NULL,
+            position INTEGER NOT NULL,
+            text TEXT NOT NULL,
+            embedding BLOB NOT NULL
+        )
+    """)
     # Older databases were created without done_reason; add it without touching existing rows.
     columns = [row["name"] for row in conn.execute("PRAGMA table_info(benchmark_runs)")]
     if "done_reason" not in columns:
@@ -107,6 +128,60 @@ def rename_conversation(conversation_id: int, title: str):
     conn.execute("UPDATE conversations SET title = ? WHERE id = ?", (title, conversation_id))
     conn.commit()
     conn.close()
+
+
+def get_document_by_name(filename: str):
+    conn = get_connection()
+    row = conn.execute("SELECT id FROM documents WHERE filename = ?", (filename,)).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def add_document(filename: str, embed_model: str, pages: int, chars: int, chunks: list[tuple]) -> int:
+    # chunks: (page, position, text, embedding bytes). One transaction, so a failure leaves nothing half-added.
+    conn = get_connection()
+    with conn:
+        cursor = conn.execute(
+            "INSERT INTO documents (filename, embed_model, pages, chars, added_at) VALUES (?, ?, ?, ?, ?)",
+            (filename, embed_model, pages, chars, datetime.now(timezone.utc).isoformat()),
+        )
+        document_id = cursor.lastrowid
+        conn.executemany(
+            "INSERT INTO chunks (document_id, page, position, text, embedding) VALUES (?, ?, ?, ?, ?)",
+            [(document_id, *chunk) for chunk in chunks],
+        )
+    conn.close()
+    return document_id
+
+
+def list_documents():
+    conn = get_connection()
+    rows = conn.execute("""
+        SELECT d.id, d.filename, d.embed_model, d.pages, d.chars, d.added_at, COUNT(c.id) AS chunks
+        FROM documents d LEFT JOIN chunks c ON c.document_id = d.id
+        GROUP BY d.id ORDER BY d.added_at DESC
+    """).fetchall()
+    conn.close()
+    return [dict(row) for row in rows]
+
+
+def delete_document(document_id: int):
+    conn = get_connection()
+    with conn:
+        conn.execute("DELETE FROM chunks WHERE document_id = ?", (document_id,))
+        conn.execute("DELETE FROM documents WHERE id = ?", (document_id,))
+    conn.close()
+
+
+def get_chunks(embed_model: str):
+    conn = get_connection()
+    rows = conn.execute("""
+        SELECT c.page, c.text, c.embedding, d.filename
+        FROM chunks c JOIN documents d ON d.id = c.document_id
+        WHERE d.embed_model = ?
+    """, (embed_model,)).fetchall()
+    conn.close()
+    return rows
 
 
 def delete_last_assistant_message(conversation_id: int):

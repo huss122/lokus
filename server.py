@@ -3,13 +3,14 @@ from datetime import date
 from pathlib import Path
 
 import httpx
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, StreamingResponse
-from starlette.concurrency import iterate_in_threadpool
+from starlette.concurrency import iterate_in_threadpool, run_in_threadpool
 from pydantic import BaseModel
 
 import benchmark
 import database
+import rag
 
 OLLAMA = "http://localhost:11434"
 DEFAULT_MODEL = "qwen3.5:9b"
@@ -149,6 +150,45 @@ def benchmark_history():
 def benchmark_delete(batch_id: str):
     database.delete_benchmark_batch(batch_id)
     return {"ok": True}
+
+
+# --- Documents --------------------------------------------------------
+
+MAX_UPLOAD_BYTES = 20 * 1024 * 1024
+
+
+@app.get("/documents")
+def documents():
+    return {"documents": database.list_documents()}
+
+
+@app.post("/documents")
+async def upload_document(request: Request, filename: str):
+    # The raw file is the request body, which avoids an extra multipart dependency.
+    data = await request.body()
+    if not data:
+        raise HTTPException(status_code=400, detail="The file is empty.")
+    if len(data) > MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail="The file is larger than 20 MB.")
+    try:
+        # Embedding takes seconds; run it off the event loop so other requests keep working.
+        return await run_in_threadpool(rag.add_document, filename, data)
+    except rag.DocumentError as error:
+        raise HTTPException(status_code=400, detail=str(error))
+
+
+@app.delete("/documents/{document_id}")
+def remove_document(document_id: int):
+    database.delete_document(document_id)
+    return {"ok": True}
+
+
+@app.get("/documents/search")
+def search_documents(q: str, k: int = 4):
+    try:
+        return {"results": rag.search(q, max(1, min(k, 10)))}
+    except rag.DocumentError as error:
+        raise HTTPException(status_code=400, detail=str(error))
 
 
 # --- Chat ------------------------------------------------------------

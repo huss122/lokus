@@ -189,7 +189,7 @@
     .conv-confirm .confirm-no:hover { background: var(--border); }
 
     /* --- Main area --- */
-    #main, #benchmark-view {
+    #main, #benchmark-view, #documents-view {
       flex: 1;
       display: flex;
       flex-direction: column;
@@ -197,7 +197,7 @@
       height: 100vh;
     }
 
-    #topbar, #bench-topbar {
+    #topbar, #bench-topbar, #docs-topbar {
       display: flex;
       align-items: center;
       justify-content: space-between;
@@ -424,10 +424,10 @@
     .nav-tab.active { background: var(--surface); color: var(--text); }
 
     /* --- Benchmark view --- */
-    #bench-topbar { font-weight: 600; font-size: 0.95rem; }
-    #bench-scroll { flex: 1; overflow-y: auto; padding: 1.5rem 1.25rem 2rem; }
-    #bench-inner { max-width: 960px; margin: 0 auto; }
-    #bench-inner h2 { font-size: 1.05rem; margin: 1.6rem 0 0.7rem; }
+    #bench-topbar, #docs-topbar { font-weight: 600; font-size: 0.95rem; }
+    #bench-scroll, #docs-scroll { flex: 1; overflow-y: auto; padding: 1.5rem 1.25rem 2rem; }
+    #bench-inner, #docs-inner { max-width: 960px; margin: 0 auto; }
+    #bench-inner h2, #docs-inner h2 { font-size: 1.05rem; margin: 1.6rem 0 0.7rem; }
 
     .bench-form {
       background: var(--surface);
@@ -468,6 +468,36 @@
     #bench-run:disabled { opacity: 0.4; cursor: default; }
     #bench-status { font-size: 0.85rem; color: var(--text-muted); min-height: 1.2em; }
     #bench-status.error { color: var(--danger); }
+
+    /* --- Documents view --- */
+    .docs-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.8rem; }
+    .docs-btn {
+      padding: 0.5rem 1.1rem;
+      border: none;
+      border-radius: 8px;
+      background: var(--accent);
+      color: var(--accent-text);
+      font-size: 0.88rem;
+      font-weight: 600;
+    }
+    .docs-btn:hover { opacity: 0.88; }
+    .docs-btn:disabled { opacity: 0.4; cursor: default; }
+    #docs-status { font-size: 0.85rem; color: var(--text-muted); }
+    #docs-status.error { color: var(--danger); }
+    #docs-query {
+      flex: 1;
+      min-width: 200px;
+      border: 1px solid var(--border);
+      border-radius: 7px;
+      background: var(--bg);
+      color: var(--text);
+      font-size: 0.88rem;
+      padding: 0.5rem 0.7rem;
+    }
+    .docs-hit { border-top: 1px solid var(--border); padding: 0.7rem 0 0.2rem; font-size: 0.86rem; }
+    .docs-hit-meta { font-size: 0.78rem; color: var(--text-muted); margin-bottom: 0.3rem; }
+    .docs-score { color: var(--accent); font-weight: 600; }
+    .docs-hit-text { line-height: 1.55; white-space: pre-wrap; }
     .bench-note { font-size: 0.78rem; color: var(--text-muted); }
 
     .bench-batch {
@@ -546,6 +576,7 @@
     <div class="nav-tabs">
       <button class="nav-tab active" data-view="chat">Chat</button>
       <button class="nav-tab" data-view="benchmark">Benchmark</button>
+      <button class="nav-tab" data-view="documents">Documents</button>
     </div>
     <button id="new-conversation">
       <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M10 4v12M4 10h12"/></svg>
@@ -571,6 +602,41 @@
         <button id="send" title="Send">
           <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 15.5V4.5M10 4.5L4.5 10M10 4.5L15.5 10"/></svg>
         </button>
+      </div>
+    </div>
+  </div>
+
+  <div id="documents-view" hidden>
+    <div id="docs-topbar">
+      <span>Documents</span>
+      <button class="theme-toggle" title="Toggle dark/light mode"></button>
+    </div>
+    <div id="docs-scroll">
+      <div id="docs-inner">
+        <div class="bench-form">
+          <div>
+            <div class="bench-label">Add a document (PDF, .txt or .md, max 20 MB)</div>
+            <div class="docs-row">
+              <input type="file" id="docs-file" accept=".pdf,.txt,.md" hidden>
+              <button id="docs-upload" class="docs-btn">Choose file…</button>
+              <span id="docs-status"></span>
+            </div>
+          </div>
+          <div class="bench-note">The text is split into chunks of about 800 characters and turned into embeddings with nomic-embed-text. Everything stays on this computer.</div>
+        </div>
+
+        <h2>Your documents</h2>
+        <div id="docs-list"></div>
+
+        <h2>Test search</h2>
+        <div class="bench-form">
+          <div class="docs-row">
+            <input id="docs-query" type="text" placeholder="Ask something your documents should answer…">
+            <button id="docs-search" class="docs-btn">Search</button>
+          </div>
+          <div class="bench-note">Shows the 4 chunks closest in meaning to the question. Score = cosine similarity (1 = same direction).</div>
+          <div id="docs-results"></div>
+        </div>
       </div>
     </div>
   </div>
@@ -1133,18 +1199,124 @@
       if (row.isConnected) addRegenerateButton(row);
     }
 
-    // --- Views (Chat / Benchmark) -----------------------------------
+    // --- Views (Chat / Benchmark / Documents) -------------------------
     const chatView = document.getElementById("main");
     const benchmarkView = document.getElementById("benchmark-view");
+    const documentsView = document.getElementById("documents-view");
     const navTabs = document.querySelectorAll(".nav-tab");
 
     function showView(name) {
       chatView.hidden = name !== "chat";
       benchmarkView.hidden = name !== "benchmark";
+      documentsView.hidden = name !== "documents";
       navTabs.forEach((tab) => tab.classList.toggle("active", tab.dataset.view === name));
       if (name === "benchmark") loadBenchmarkHistory();
+      if (name === "documents") loadDocuments();
     }
     navTabs.forEach((tab) => tab.addEventListener("click", () => showView(tab.dataset.view)));
+
+    // --- Documents ----------------------------------------------------
+    const docsFile = document.getElementById("docs-file");
+    const docsUpload = document.getElementById("docs-upload");
+    const docsStatus = document.getElementById("docs-status");
+    const docsList = document.getElementById("docs-list");
+    const docsQuery = document.getElementById("docs-query");
+    const docsSearch = document.getElementById("docs-search");
+    const docsResults = document.getElementById("docs-results");
+
+    function setDocsStatus(text, isError) {
+      docsStatus.textContent = text;
+      docsStatus.classList.toggle("error", !!isError);
+    }
+
+    docsUpload.addEventListener("click", () => docsFile.click());
+    docsFile.addEventListener("change", async () => {
+      const file = docsFile.files[0];
+      docsFile.value = ""; // so choosing the same file again still fires "change"
+      if (!file) return;
+      docsUpload.disabled = true;
+      setDocsStatus(`Reading and embedding ${file.name}…`);
+      try {
+        const response = await fetch(`/documents?filename=${encodeURIComponent(file.name)}`, {
+          method: "POST",
+          body: file,
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.detail || `HTTP ${response.status}`);
+        setDocsStatus(`Added ${data.filename}: ${data.pages} page(s), ${data.chunks} chunks.`);
+        loadDocuments();
+      } catch (error) {
+        setDocsStatus(error.message, true);
+      } finally {
+        docsUpload.disabled = false;
+      }
+    });
+
+    async function loadDocuments() {
+      try {
+        const response = await fetch("/documents");
+        const data = await response.json();
+        renderDocuments(data.documents);
+      } catch (error) {
+        console.error("Could not load documents:", error);
+      }
+    }
+
+    function renderDocuments(docs) {
+      if (docs.length === 0) {
+        docsList.innerHTML = '<div class="bench-empty">No documents yet. Add one above.</div>';
+        return;
+      }
+      let html = `<div class="bench-batch"><div class="bench-table-wrap"><table class="bench-table">
+        <tr><th>File</th><th>Pages</th><th>Chunks</th><th>Characters</th><th>Added</th><th></th></tr>`;
+      for (const d of docs) {
+        html += `<tr>
+          <td>${escapeHtml(d.filename)}</td>
+          <td>${d.pages}</td>
+          <td>${d.chunks}</td>
+          <td>${d.chars.toLocaleString()}</td>
+          <td>${escapeHtml(new Date(d.added_at).toLocaleString())}</td>
+          <td><button class="bench-delete" data-id="${d.id}">Delete</button></td>
+        </tr>`;
+      }
+      docsList.innerHTML = html + "</table></div></div>";
+    }
+
+    docsList.addEventListener("click", async (e) => {
+      const button = e.target.closest(".bench-delete");
+      if (!button || !confirm("Delete this document?")) return;
+      await fetch(`/documents/${button.dataset.id}`, { method: "DELETE" });
+      loadDocuments();
+    });
+
+    async function runDocsSearch() {
+      const query = docsQuery.value.trim();
+      if (!query) return;
+      docsSearch.disabled = true;
+      docsResults.innerHTML = '<div class="bench-empty">Searching…</div>';
+      try {
+        const response = await fetch(`/documents/search?q=${encodeURIComponent(query)}`);
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.detail || `HTTP ${response.status}`);
+        if (data.results.length === 0) {
+          docsResults.innerHTML = '<div class="bench-empty">No documents to search.</div>';
+          return;
+        }
+        docsResults.innerHTML = data.results.map((r) => `
+          <div class="docs-hit">
+            <div class="docs-hit-meta"><span class="docs-score">${r.score.toFixed(3)}</span> · ${escapeHtml(r.filename)}, page ${r.page}</div>
+            <div class="docs-hit-text">${escapeHtml(r.text)}</div>
+          </div>`).join("");
+      } catch (error) {
+        docsResults.innerHTML = `<div class="bench-empty">${escapeHtml(error.message)}</div>`;
+      } finally {
+        docsSearch.disabled = false;
+      }
+    }
+    docsSearch.addEventListener("click", runDocsSearch);
+    docsQuery.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") runDocsSearch();
+    });
 
     // --- Benchmark ----------------------------------------------------
     const benchPrompt = document.getElementById("bench-prompt");

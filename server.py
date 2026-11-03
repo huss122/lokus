@@ -53,6 +53,8 @@ class ChatRequest(BaseModel):
     conversation_id: int | None = None
     # Replace the last answer instead of answering a new question.
     regenerate: bool = False
+    # Answer from the uploaded documents (RAG) instead of the model's own knowledge.
+    use_documents: bool = False
 
 
 class NewConversationRequest(BaseModel):
@@ -271,6 +273,19 @@ def chat(request: ChatRequest):
     if request.think is not None:
         payload["think"] = request.think
 
+    sources = []
+    if request.use_documents and messages:
+        # Search before anything is saved, so a failed search leaves no half-created conversation.
+        try:
+            sources = rag.search(messages[-1]["content"], rag.TOP_K)
+        except rag.DocumentError as error:
+            raise HTTPException(status_code=400, detail=str(error))
+        if not sources:
+            raise HTTPException(status_code=400, detail="No documents yet. Add some in the Documents tab.")
+        # Only what goes to the model changes; the database keeps the question as typed.
+        question = {"role": "user", "content": rag.build_question(messages[-1]["content"], sources)}
+        payload["messages"] = payload["messages"][:-1] + [question]
+
     conversation_id = request.conversation_id
     is_new = conversation_id is None
     if request.regenerate and is_new:
@@ -295,6 +310,11 @@ def chat(request: ChatRequest):
 
         # First line tells the frontend which conversation this is (matters for new ones).
         yield json.dumps({"conversation_id": conversation_id}) + "\n"
+        if sources:
+            yield json.dumps({"sources": [
+                {"id": n, "filename": s["filename"], "page": s["page"], "score": s["score"], "text": s["text"]}
+                for n, s in enumerate(sources, start=1)
+            ]}) + "\n"
 
         # If Ollama reports a separate thinking field, trust it. Otherwise the model writes
         # <think>...</think> into the content and we split it ourselves. If </think> never

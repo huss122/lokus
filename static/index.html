@@ -270,6 +270,15 @@
     .msg-row.assistant .answer-content {
       line-height: 1.65;
     }
+    .msg-row.assistant .answer-sources {
+      margin-top: 0.5rem;
+      font-size: 0.78rem;
+      color: var(--text-muted);
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.3rem 0.8rem;
+    }
+    .answer-sources span { cursor: help; border-bottom: 1px dotted var(--border); }
     .msg-row.assistant .answer-meta {
       margin-top: 0.4rem;
       font-size: 0.78rem;
@@ -590,6 +599,7 @@
       <div class="topbar-controls">
         <select id="model"></select>
         <label class="think-toggle"><input type="checkbox" id="think"> Thinking</label>
+        <label class="think-toggle" title="Answer from the files in the Documents tab"><input type="checkbox" id="use-docs"> Documents</label>
       </div>
       <button class="theme-toggle" title="Toggle dark/light mode"></button>
     </div>
@@ -734,6 +744,7 @@
 
     const modelSelect = document.getElementById("model");
     const thinkBox = document.getElementById("think");
+    const docsBox = document.getElementById("use-docs");
     let modelInfo = [];
 
     function updateThinkBox() {
@@ -797,7 +808,8 @@
     // Covers what models actually use: headings, bold/italic, code, lists. No tables or links.
 
     function escapeHtml(s) {
-      return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+      // Quotes too, since the result is also used inside attributes like title="…".
+      return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
     }
 
     function renderMarkdown(raw) {
@@ -1049,9 +1061,13 @@
       answerContent.className = "answer-content";
       const answerMeta = document.createElement("div");
       answerMeta.className = "answer-meta";
+      const answerSources = document.createElement("div");
+      answerSources.className = "answer-sources";
+      answerSources.hidden = true;
 
       row.appendChild(thinkingBlock);
       row.appendChild(answerContent);
+      row.appendChild(answerSources);
       row.appendChild(answerMeta);
       messagesInner.appendChild(row);
       scrollToBottom();
@@ -1081,6 +1097,15 @@
         // Last line of a new conversation: the generated title is ready.
         if (data.title !== undefined) {
           loadConversations();
+          return;
+        }
+
+        // The chunks the model was given; hover a source to read its text.
+        if (data.sources !== undefined) {
+          answerSources.innerHTML = "Sources: " + data.sources.map((s) =>
+            `<span title="${escapeHtml(s.text)}">[${s.id}] ${escapeHtml(s.filename)}, p. ${s.page}</span>`
+          ).join("");
+          answerSources.hidden = false;
           return;
         }
 
@@ -1143,6 +1168,7 @@
       if (isRegenerate) body.regenerate = true;
       if (modelSelect.value) body.model = modelSelect.value;
       if (!thinkBox.disabled) body.think = thinkBox.checked;
+      if (docsBox.checked) body.use_documents = true;
 
       streamController = new AbortController();
       setStreaming(true);
